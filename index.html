@@ -1207,7 +1207,7 @@ function doGoogleLogin(){
 
   const client = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_CLIENT_ID,
-    scope: 'openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly https://www.googleapis.com/auth/classroom.student-submissions.me.readonly',
+    scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
     hd: ALLOWED_DOMAIN,
     callback: async (tokenResp) => {
       if(tokenResp.error){
