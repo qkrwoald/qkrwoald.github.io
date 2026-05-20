@@ -130,39 +130,29 @@ button,input,select,textarea{font-family:var(--f-body)}
   border:1px solid var(--divider);
   box-shadow:var(--shadow-lg);
 }
-.seg{
-  display:flex;background:var(--paper3);border-radius:var(--r-sm);
-  padding:3px;margin-bottom:22px;gap:2px;
-}
-.seg-btn{
-  flex:1;padding:8px 0;border:none;background:transparent;
-  font-size:13px;font-weight:500;color:var(--ink3);border-radius:8px;
-  cursor:pointer;transition:all .18s;
-}
-.seg-btn.on{background:var(--paper);color:var(--ink);box-shadow:var(--shadow-xs);}
-.afield{margin-bottom:14px;}
-.afield label{display:block;font-size:11px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
-.afield input{
-  width:100%;padding:12px 14px;
-  background:var(--paper);border:1.5px solid var(--divider);
-  border-radius:var(--r);color:var(--ink);font-size:15px;
-  transition:border-color .18s,box-shadow .18s;
-}
-.afield input:focus{outline:none;border-color:var(--terracotta);box-shadow:0 0 0 3px var(--tc-mid);}
-.a-submit{
-  width:100%;padding:13px;background:var(--terracotta);border:none;
-  border-radius:var(--r);color:#fff;font-size:15px;font-weight:700;
-  cursor:pointer;transition:all .18s;margin-top:4px;letter-spacing:-.2px;
-}
-.a-submit:hover{filter:brightness(1.07);}
-.a-submit:active{transform:scale(.98);}
 .a-err{
   background:var(--rose-pale);border:1.5px solid rgba(192,83,90,.25);
   border-radius:var(--r-sm);padding:10px 13px;
   color:var(--rose);font-size:13px;margin-bottom:14px;display:none;
 }
-.a-switch{text-align:center;font-size:13px;color:var(--ink3);margin-top:16px;}
-.a-switch span{color:var(--terracotta);font-weight:600;cursor:pointer;}
+.google-btn{
+  width:100%;padding:13px 16px;
+  background:#fff;border:1.5px solid #dadce0;
+  border-radius:var(--r);color:#3c4043;font-size:15px;font-weight:600;
+  cursor:pointer;transition:all .18s;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  box-shadow:var(--shadow-xs);
+}
+.google-btn:hover{background:#f8f9fa;box-shadow:var(--shadow-sm);}
+.google-btn:active{transform:scale(.98);}
+.google-btn svg{flex-shrink:0;}
+.auth-notice{
+  text-align:center;font-size:12px;color:var(--ink3);margin-top:16px;line-height:1.6;
+}
+.auth-notice strong{color:var(--terracotta);}
+.auth-loading{
+  text-align:center;padding:16px 0;color:var(--ink3);font-size:14px;display:none;
+}
 
 /* ╔══════════════════════════════════════╗
    ║  APP SHELL                           ║
@@ -637,7 +627,10 @@ canvas{width:100%;display:block;}
 </head>
 <body>
 
-<!-- ════ AUTH ════ -->
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<!-- AUTH -->
 <div id="auth-screen">
   <div class="auth-brand">
     <div class="auth-brand-mark">✦</div>
@@ -645,26 +638,21 @@ canvas{width:100%;display:block;}
     <div class="auth-brand-sub">우선순위 큐 기반 스마트 학습 플래너</div>
   </div>
   <div class="auth-box">
-    <div class="seg">
-      <button class="seg-btn on" id="t-li" onclick="authTab('li')">로그인</button>
-      <button class="seg-btn" id="t-su" onclick="authTab('su')">회원가입</button>
-    </div>
     <div id="aerr" class="a-err"></div>
-
-    <div id="f-li">
-      <div class="afield"><label>아이디</label><input id="li-id" type="text" placeholder="아이디" autocomplete="username"></div>
-      <div class="afield"><label>비밀번호</label><input id="li-pw" type="password" placeholder="비밀번호" autocomplete="current-password"></div>
-      <button class="a-submit" onclick="doLogin()">로그인</button>
-      <div class="a-switch">계정이 없으신가요? <span onclick="authTab('su')">회원가입</span></div>
-    </div>
-
-    <div id="f-su" style="display:none">
-      <div class="afield"><label>이름</label><input id="su-n" type="text" placeholder="홍길동"></div>
-      <div class="afield"><label>아이디</label><input id="su-id" type="text" placeholder="영문·숫자·_ 4자 이상"></div>
-      <div class="afield"><label>비밀번호</label><input id="su-pw" type="password" placeholder="6자 이상"></div>
-      <div class="afield"><label>비밀번호 확인</label><input id="su-pw2" type="password" placeholder="비밀번호 재입력"></div>
-      <button class="a-submit" onclick="doSignup()">가입하기</button>
-      <div class="a-switch">이미 계정이 있으신가요? <span onclick="authTab('li')">로그인</span></div>
+    <div class="auth-loading" id="auth-loading">🔄 로그인 중...</div>
+    <button class="google-btn" id="google-btn" onclick="doGoogleLogin()">
+      <svg width="20" height="20" viewBox="0 0 48 48">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.29-8.16 2.29-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+        <path fill="none" d="M0 0h48v48H0z"/>
+      </svg>
+      학교 Google 계정으로 로그인
+    </button>
+    <div class="auth-notice">
+      <strong>@ksa.hs.kr</strong> 계정만 로그인할 수 있습니다.<br>
+      다른 구글 계정은 사용할 수 없습니다.
     </div>
   </div>
 </div>
@@ -1098,6 +1086,24 @@ self.addEventListener('notificationclick',e=>{
 }
 </script>
 
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
+const _app = initializeApp({
+  apiKey:"AIzaSyDd98pZve8q5WI_Y99qfqSalEYVrKQ1ixA",
+  authDomain:"ksatudy-ce5dd.firebaseapp.com",
+  projectId:"ksatudy-ce5dd",
+  storageBucket:"ksatudy-ce5dd.firebasestorage.app",
+  messagingSenderId:"446155002439",
+  appId:"1:446155002439:web:ae57d3bad532ad03289762"
+});
+window._db=getFirestore(_app);
+window._fsDoc=doc;
+window._fsSetDoc=setDoc;
+window._fsGetDoc=getDoc;
+window.dispatchEvent(new Event('fb-ready'));
+</script>
+
 <script>
 'use strict';
 /* ══════════════════════════════════════
@@ -1150,57 +1156,83 @@ class HashMap{
 }
 
 /* ══════════════════════════════════════
-   AUTH  — localStorage per user
+   FIREBASE INIT
 ══════════════════════════════════════ */
-const UK='squsers', SK='sqsession';
-function getUsers(){try{return JSON.parse(localStorage.getItem(UK)||'{}');}catch{return{};}}
-function saveUsers(u){localStorage.setItem(UK,JSON.stringify(u));}
+function getDB(){return window._db;}
+function fsDoc(...a){return window._fsDoc(...a);}
+function fsSetDoc(...a){return window._fsSetDoc(...a);}
+function fsGetDoc(...a){return window._fsGetDoc(...a);}
+
+/* ══════════════════════════════════════
+   AUTH  — Google OAuth (ksa.hs.kr only)
+══════════════════════════════════════ */
+const GOOGLE_CLIENT_ID='251399209464-s7memocmivrapsj0egdfedauj14b6gb6.apps.googleusercontent.com';
+const ALLOWED_DOMAIN='ksa.hs.kr';
+const SK='sqsession';
 function getSession(){try{return JSON.parse(localStorage.getItem(SK)||'null');}catch{return null;}}
 function saveSession(s){localStorage.setItem(SK,JSON.stringify(s));}
 function clearSession(){localStorage.removeItem(SK);}
-function uKey(uid){return'sqdata_'+uid;}
-function loadUD(uid){try{return JSON.parse(localStorage.getItem(uKey(uid))||'null');}catch{return null;}}
-function saveUD(uid,d){localStorage.setItem(uKey(uid),JSON.stringify(d));}
 
-function authTab(t){
-  document.getElementById('f-li').style.display=t==='li'?'':'none';
-  document.getElementById('f-su').style.display=t==='su'?'':'none';
-  document.getElementById('t-li').classList.toggle('on',t==='li');
-  document.getElementById('t-su').classList.toggle('on',t==='su');
-  document.getElementById('aerr').style.display='none';
+async function saveUD(uid,d){
+  try{
+    if(!getDB()) throw new Error('DB not ready');
+    await fsSetDoc(fsDoc(getDB(),'users',uid),d);
+  }catch(e){
+    localStorage.setItem('sqdata_'+uid,JSON.stringify(d));
+    console.warn('Firestore save failed:',e);
+  }
 }
+async function loadUD(uid){
+  try{
+    if(!getDB()) throw new Error('DB not ready');
+    const snap=await fsGetDoc(fsDoc(getDB(),'users',uid));
+    if(snap.exists()) return snap.data();
+  }catch(e){
+    console.warn('Firestore load failed:',e);
+  }
+  try{return JSON.parse(localStorage.getItem('sqdata_'+uid)||'null');}catch{return null;}
+}
+
 function showErr(m){const e=document.getElementById('aerr');e.textContent=m;e.style.display='block';}
-function shash(s){let h=5381;for(let i=0;i<s.length;i++)h=(h*33^s.charCodeAt(i))>>>0;return h.toString(36);}
 
-function doLogin(){
-  const id=document.getElementById('li-id').value.trim();
-  const pw=document.getElementById('li-pw').value;
-  const users=getUsers();
-  if(!users[id]||users[id].pwh!==shash(pw)){showErr('아이디 또는 비밀번호가 올바르지 않습니다');return;}
-  const s={uid:id,name:users[id].name};
-  saveSession(s);  // ← persistent login
-  initApp(s);
+function doGoogleLogin(){
+  const btn=document.getElementById('google-btn');
+  const loading=document.getElementById('auth-loading');
+  btn.style.display='none'; loading.style.display='block';
+  document.getElementById('aerr').style.display='none';
+  const client=google.accounts.oauth2.initTokenClient({
+    client_id:GOOGLE_CLIENT_ID,
+    scope:'openid email profile',
+    hd:ALLOWED_DOMAIN,
+    callback:async(tokenResp)=>{
+      if(tokenResp.error){
+        btn.style.display='flex';loading.style.display='none';
+        showErr('로그인에 실패했습니다. 다시 시도해주세요.');return;
+      }
+      try{
+        const res=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+tokenResp.access_token}});
+        const info=await res.json();
+        if(!info.email||!info.email.endsWith('@'+ALLOWED_DOMAIN)){
+          btn.style.display='flex';loading.style.display='none';
+          showErr('@'+ALLOWED_DOMAIN+' 계정만 사용할 수 있습니다.');return;
+        }
+        const s={uid:info.sub,name:info.name||info.email.split('@')[0],email:info.email,picture:info.picture||'',accessToken:tokenResp.access_token};
+        saveSession(s);initApp(s);
+      }catch(e){
+        btn.style.display='flex';loading.style.display='none';
+        showErr('사용자 정보를 가져오지 못했습니다.');
+      }
+    }
+  });
+  client.requestAccessToken();
 }
-function doSignup(){
-  const name=document.getElementById('su-n').value.trim();
-  const id=document.getElementById('su-id').value.trim();
-  const pw=document.getElementById('su-pw').value;
-  const pw2=document.getElementById('su-pw2').value;
-  if(!name){showErr('이름을 입력해주세요');return;}
-  if(id.length<4||!/^[a-zA-Z0-9_]+$/.test(id)){showErr('아이디는 영문·숫자·_ 4자 이상이어야 합니다');return;}
-  if(pw.length<6){showErr('비밀번호는 6자 이상이어야 합니다');return;}
-  if(pw!==pw2){showErr('비밀번호가 일치하지 않습니다');return;}
-  const users=getUsers();
-  if(users[id]){showErr('이미 사용 중인 아이디입니다');return;}
-  users[id]={name,pwh:shash(pw)};
-  saveUsers(users);
-  const s={uid:id,name};
-  saveSession(s);  // ← persistent login
-  initApp(s);
-}
+
 function doLogout(){
   if(!confirm('로그아웃 하시겠습니까?'))return;
-  saveState();clearSession();location.reload();
+  saveState();
+  const s=getSession();
+  if(s&&s.accessToken) google.accounts.oauth2.revoke(s.accessToken,()=>{});
+  clearSession();location.reload();
 }
 
 /* ══════════════════════════════════════
@@ -1493,10 +1525,15 @@ function renderTimer(){
 /* SETTINGS */
 function renderSettings(){
   if(!CU)return;
-  const av=CU.name.slice(0,1).toUpperCase();
-  document.getElementById('pav').textContent=av;
+  const av=document.getElementById('pav');
+  if(CU.picture){
+    av.innerHTML=`<img src="${CU.picture}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+    av.style.fontSize='0';
+  } else {
+    av.textContent=CU.name.slice(0,1).toUpperCase();
+  }
   document.getElementById('pname').textContent=CU.name;
-  document.getElementById('puid').textContent='@'+CU.uid;
+  document.getElementById('puid').textContent=CU.email||('@'+CU.uid);
 }
 
 let deferredPrompt=null;
@@ -1588,8 +1625,6 @@ function updateSP(){
 }
 document.addEventListener('DOMContentLoaded',()=>{
   ['f-dl','f-hr'].forEach(id=>{const e=document.getElementById(id);if(e)e.addEventListener('input',updateSP);});
-  document.getElementById('li-pw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
-  document.getElementById('su-pw2').addEventListener('keydown',e=>{if(e.key==='Enter')doSignup();});
 });
 
 /* TIMER */
@@ -1670,79 +1705,60 @@ function clearData(){if(!confirm('모든 과제를 삭제할까요? 되돌릴 �
 /* ══════════════════════════════════════
    GMAIL IMAP SYNC (Cloudflare Worker)
 ══════════════════════════════════════ */
-const AP_KEY = 'sq_app_pw';
-function getAppPassword(){ return localStorage.getItem(AP_KEY)||''; }
-function saveAppPassword(pw){ localStorage.setItem(AP_KEY, pw); }
+const AP_KEY='sq_app_pw';
+function getAppPassword(){return localStorage.getItem(AP_KEY)||'';}
+function saveAppPassword(pw){localStorage.setItem(AP_KEY,pw);}
 
 async function syncGmail(){
-  const btn = document.getElementById('gmail-sync-btn');
-  const status = document.getElementById('gmail-status');
-  if(!CU?.email){ toast('로그인이 필요합니다','err'); return; }
-
-  let appPw = getAppPassword();
+  const btn=document.getElementById('gmail-sync-btn');
+  const status=document.getElementById('gmail-status');
+  if(!CU?.email){toast('로그인이 필요합니다','err');return;}
+  let appPw=getAppPassword();
   if(!appPw){
-    appPw = prompt('Gmail 앱 비밀번호를 입력하세요 (공백 없이 16자리):\nhttps://myaccount.google.com/apppasswords');
-    if(!appPw) return;
-    appPw = appPw.replace(/\s/g,'');
+    appPw=prompt('Gmail 앱 비밀번호를 입력하세요 (공백 없이 16자리):\nhttps://myaccount.google.com/apppasswords');
+    if(!appPw)return;
+    appPw=appPw.replace(/\s/g,'');
     saveAppPassword(appPw);
   }
-
   btn.innerHTML='<span>⏳</span><span>불러오는 중...</span>';
   btn.disabled=true;
   status.style.display='block';
   status.textContent='📧 Gmail IMAP으로 Classroom 이메일 읽는 중...';
-
   try{
-    const res = await fetch('https://ksatudy-imap.jaeminpark0502.workers.dev', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ email: CU.email, appPassword: appPw })
+    const res=await fetch('https://ksatudy-imap.jaeminpark0502.workers.dev',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email:CU.email,appPassword:appPw})
     });
-
-    const data = await res.json();
-
+    const data=await res.json();
     if(data.error){
-      if(data.error.includes('로그인 실패') || data.error.includes('Login')){
+      if(data.error.includes('로그인 실패')||data.error.includes('Login')){
         saveAppPassword('');
-        status.textContent='❌ 앱 비밀번호가 틀렸습니다. 다시 버튼을 눌러 재입력해주세요.';
-      } else {
-        status.textContent='❌ ' + data.error;
-      }
-      btn.innerHTML='<span>📧</span><span>Gmail 동기화</span>';
-      btn.disabled=false;
-      return;
+        status.textContent='❌ 앱 비밀번호가 틀렸습니다. 다시 눌러 재입력해주세요.';
+      }else{status.textContent='❌ '+data.error;}
+      btn.innerHTML='<span>📧</span><span>Gmail 동기화</span>';btn.disabled=false;return;
     }
-
-    const assignments = data.assignments || [];
+    const assignments=data.assignments||[];
     if(!assignments.length){
       status.textContent='최근 30일간 Classroom 과제 이메일이 없습니다.';
-      btn.innerHTML='<span>📧</span><span>Gmail 동기화</span>';
-      btn.disabled=false;
-      return;
+      btn.innerHTML='<span>📧</span><span>Gmail 동기화</span>';btn.disabled=false;return;
     }
-
-    let added=0, skipped=0;
+    let added=0,skipped=0;
     for(const a of assignments){
-      const exists = tasks.some(t=>t.name===a.name && t.subject===a.subject);
-      if(exists){ skipped++; continue; }
-      if(new Date(a.deadline) < new Date(new Date().toDateString())){ skipped++; continue; }
-      addTask(a.subject, a.name, a.deadline, a.importance||3, a.hours||2, a.memo||'');
+      const exists=tasks.some(t=>t.name===a.name&&t.subject===a.subject);
+      if(exists){skipped++;continue;}
+      if(new Date(a.deadline)<new Date(new Date().toDateString())){skipped++;continue;}
+      addTask(a.subject,a.name,a.deadline,a.importance||3,a.hours||2,a.memo||'');
       added++;
     }
-
-    status.textContent = added
-      ? `✅ ${added}개 과제 추가됨${skipped?` (${skipped}개 중복/기한초과 제외)`:''}`
-      : `새로 추가된 과제가 없습니다${skipped?` (${skipped}개 이미 등록됨)`:''}`;
-    if(added>0) toast(`📧 ${added}개 과제 추가됨`,'ok');
+    status.textContent=added?`✅ ${added}개 과제 추가됨${skipped?` (${skipped}개 중복/기한초과 제외)`:''}`:
+      `새로 추가된 과제가 없습니다${skipped?` (${skipped}개 이미 등록됨)`:''}`;
+    if(added>0)toast(`📧 ${added}개 과제 추가됨`,'ok');
     else toast('새로운 과제가 없습니다');
-
   }catch(e){
-    console.error('Gmail sync error:', e);
+    console.error('Gmail sync error:',e);
     status.textContent='❌ Worker 서버 연결 실패. 잠시 후 다시 시도해주세요.';
   }
-
-  btn.innerHTML='<span>📧</span><span>Gmail 동기화</span>';
-  btn.disabled=false;
+  btn.innerHTML='<span>📧</span><span>Gmail 동기화</span>';btn.disabled=false;
 }
 
 /* PERSIST */
@@ -1750,8 +1766,8 @@ function saveState(){
   if(!CU)return;
   saveUD(CU.uid,{tasks,nid,settings:S,pomoCount:pomoC,scmap,activityLog:actm.m});
 }
-function loadState(uid){
-  const d=loadUD(uid);if(!d)return false;
+async function loadState(uid){
+  const d=await loadUD(uid);if(!d)return false;
   tasks=d.tasks||[];nid=d.nid||1;
   if(d.settings)Object.assign(S,d.settings);
   if(d.pomoCount)pomoC=d.pomoCount;
@@ -1781,12 +1797,18 @@ window.addEventListener('appinstalled',()=>{
 });
 
 /* BOOT */
-function initApp(session){
+async function initApp(session){
   CU=session;
   document.getElementById('auth-screen').style.display='none';
   document.getElementById('app').style.display='block';
-  document.getElementById('user-pill').textContent=session.name.slice(0,1).toUpperCase();
-  const hasData=loadState(session.uid);
+  const pill=document.getElementById('user-pill');
+  if(session.picture){
+    pill.innerHTML=`<img src="${session.picture}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+  } else {
+    pill.textContent=session.name.slice(0,1).toUpperCase();
+  }
+  toast('데이터 불러오는 중...⏳');
+  const hasData=await loadState(session.uid);
   // 새 유저는 빈 상태로 시작 (데모 데이터 없음)
   rebuild();applyTheme();renderPomoDots();showPg('home');
   if(window.matchMedia('(prefers-color-scheme: dark)').matches&&S.theme==='system'){document.documentElement.dataset.theme='dark';}
@@ -1907,9 +1929,14 @@ async function testNotif(){
   toast('테스트 알림 전송됨!','ok');
 }
 
-(function boot(){
-  const s=getSession(); // ← 자동 로그인
-  if(s){initApp(s);}
+(async function boot(){
+  await new Promise(resolve=>{
+    if(window._db){resolve();return;}
+    window.addEventListener('fb-ready',resolve,{once:true});
+    setTimeout(resolve,3000);
+  });
+  const s=getSession();
+  if(s){await initApp(s);}
   else{document.getElementById('auth-screen').style.display='flex';document.getElementById('app').style.display='none';}
   window.addEventListener('resize',()=>{if(curPg==='viz')setTimeout(renderViz,50);});
 })();
