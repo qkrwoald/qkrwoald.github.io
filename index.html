@@ -1648,8 +1648,6 @@ function updateSP(){
 }
 document.addEventListener('DOMContentLoaded',()=>{
   ['f-dl','f-hr'].forEach(id=>{const e=document.getElementById(id);if(e)e.addEventListener('input',updateSP);});
-  document.getElementById('li-pw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
-  document.getElementById('su-pw2').addEventListener('keydown',e=>{if(e.key==='Enter')doSignup();});
 });
 
 /* TIMER */
@@ -1896,12 +1894,21 @@ async function testNotif(){
   toast('테스트 알림 전송됨!','ok');
 }
 
-(async function boot(){
-  const s=getSession(); // ← 자동 로그인
+async function boot(){
+  // Firebase module이 준비될 때까지 대기
+  await new Promise(resolve=>{
+    if(window._db){resolve();return;}
+    window.addEventListener('fb-ready', resolve, {once:true});
+    // 3초 안에 안 되면 그냥 진행 (localStorage fallback)
+    setTimeout(resolve, 3000);
+  });
+
+  const s=getSession();
   if(s){await initApp(s);}
   else{document.getElementById('auth-screen').style.display='flex';document.getElementById('app').style.display='none';}
   window.addEventListener('resize',()=>{if(curPg==='viz')setTimeout(renderViz,50);});
-})();
+}
+boot();
 
 </script>
 </body>
