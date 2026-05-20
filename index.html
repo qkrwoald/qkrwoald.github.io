@@ -1161,9 +1161,9 @@ class HashMap{
 ══════════════════════════════════════ */
 /* Firebase — 함수 호출 시점에 window._db 참조 (module 로드 타이밍 대응) */
 function getDB(){return window._db;}
-function _fsDoc(...a){return window._fsDoc(...a);}
-function _fsSetDoc(...a){return window._fsSetDoc(...a);}
-function _fsGetDoc(...a){return window._fsGetDoc(...a);}
+function fsDoc(...a){return window._fsDoc(...a);}
+function fsSetDoc(...a){return window._fsSetDoc(...a);}
+function fsGetDoc(...a){return window._fsGetDoc(...a);}
 
 /* ══════════════════════════════════════
    AUTH  — Google OAuth (ksa.hs.kr only)
@@ -1180,7 +1180,7 @@ function clearSession(){localStorage.removeItem(SK);}
 async function saveUD(uid, d){
   try{
     if(!getDB()) throw new Error('DB not ready');
-    await _fsSetDoc(_fsDoc(getDB(),'users',uid), d);
+    await fsSetDoc(fsDoc(getDB(),'users',uid), d);
   }catch(e){
     localStorage.setItem('sqdata_'+uid, JSON.stringify(d));
     console.warn('Firestore save failed, used localStorage:', e);
@@ -1189,7 +1189,7 @@ async function saveUD(uid, d){
 async function loadUD(uid){
   try{
     if(!getDB()) throw new Error('DB not ready');
-    const snap = await _fsGetDoc(_fsDoc(getDB(),'users',uid));
+    const snap = await fsGetDoc(fsDoc(getDB(),'users',uid));
     if(snap.exists()) return snap.data();
   }catch(e){
     console.warn('Firestore load failed, trying localStorage:', e);
