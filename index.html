@@ -1087,7 +1087,7 @@ self.addEventListener('notificationclick',e=>{
 }
 </script>
 
-<script>
+<script type="module">
 'use strict';
 /* ══════════════════════════════════════
    DATA STRUCTURES
@@ -1139,6 +1139,23 @@ class HashMap{
 }
 
 /* ══════════════════════════════════════
+   FIREBASE INIT
+══════════════════════════════════════ */
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDd98pZve8q5WI_Y99qfqSalEYVrKQ1ixA",
+  authDomain: "ksatudy-ce5dd.firebaseapp.com",
+  projectId: "ksatudy-ce5dd",
+  storageBucket: "ksatudy-ce5dd.firebasestorage.app",
+  messagingSenderId: "446155002439",
+  appId: "1:446155002439:web:ae57d3bad532ad03289762"
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+
+/* ══════════════════════════════════════
    AUTH  — Google OAuth (ksa.hs.kr only)
 ══════════════════════════════════════ */
 const GOOGLE_CLIENT_ID = '251399209464-s7memocmivrapsj0egdfedauj14b6gb6.apps.googleusercontent.com';
@@ -1148,9 +1165,27 @@ const SK = 'sqsession';
 function getSession(){try{return JSON.parse(localStorage.getItem(SK)||'null');}catch{return null;}}
 function saveSession(s){localStorage.setItem(SK,JSON.stringify(s));}
 function clearSession(){localStorage.removeItem(SK);}
-function uKey(uid){return'sqdata_'+uid;}
-function loadUD(uid){try{return JSON.parse(localStorage.getItem(uKey(uid))||'null');}catch{return null;}}
-function saveUD(uid,d){localStorage.setItem(uKey(uid),JSON.stringify(d));}
+
+/* Firestore 저장/불러오기 */
+async function saveUD(uid, d){
+  try{
+    await setDoc(doc(db,'users',uid), d);
+  }catch(e){
+    // Firestore 실패 시 localStorage 백업
+    localStorage.setItem('sqdata_'+uid, JSON.stringify(d));
+    console.warn('Firestore save failed, used localStorage:', e);
+  }
+}
+async function loadUD(uid){
+  try{
+    const snap = await getDoc(doc(db,'users',uid));
+    if(snap.exists()) return snap.data();
+  }catch(e){
+    console.warn('Firestore load failed, trying localStorage:', e);
+  }
+  // fallback: localStorage
+  try{return JSON.parse(localStorage.getItem('sqdata_'+uid)||'null');}catch{return null;}
+}
 
 function showErr(m){const e=document.getElementById('aerr');e.textContent=m;e.style.display='block';}
 
@@ -1687,8 +1722,8 @@ function saveState(){
   if(!CU)return;
   saveUD(CU.uid,{tasks,nid,settings:S,pomoCount:pomoC,scmap,activityLog:actm.m});
 }
-function loadState(uid){
-  const d=loadUD(uid);if(!d)return false;
+async function loadState(uid){
+  const d=await loadUD(uid);if(!d)return false;
   tasks=d.tasks||[];nid=d.nid||1;
   if(d.settings)Object.assign(S,d.settings);
   if(d.pomoCount)pomoC=d.pomoCount;
@@ -1718,7 +1753,7 @@ window.addEventListener('appinstalled',()=>{
 });
 
 /* BOOT */
-function initApp(session){
+async function initApp(session){
   CU=session;
   document.getElementById('auth-screen').style.display='none';
   document.getElementById('app').style.display='block';
@@ -1729,7 +1764,8 @@ function initApp(session){
   } else {
     pill.textContent=session.name.slice(0,1).toUpperCase();
   }
-  const hasData=loadState(session.uid);
+  toast('데이터 불러오는 중...⏳');
+  const hasData=await loadState(session.uid);
   // 새 유저는 빈 상태로 시작 (데모 데이터 없음)
   rebuild();applyTheme();renderPomoDots();showPg('home');
   if(window.matchMedia('(prefers-color-scheme: dark)').matches&&S.theme==='system'){document.documentElement.dataset.theme='dark';}
@@ -1850,12 +1886,21 @@ async function testNotif(){
   toast('테스트 알림 전송됨!','ok');
 }
 
-(function boot(){
+(async function boot(){
   const s=getSession(); // ← 자동 로그인
-  if(s){initApp(s);}
+  if(s){await initApp(s);}
   else{document.getElementById('auth-screen').style.display='flex';document.getElementById('app').style.display='none';}
   window.addEventListener('resize',()=>{if(curPg==='viz')setTimeout(renderViz,50);});
 })();
+
+/* module 스코프 → window에 등록 (HTML onclick 호환) */
+Object.assign(window,{
+  doGoogleLogin,doLogout,showPg,goBack,openSheet,closeSheet,closeBg,submitTask,
+  toggleTimer,resetTimer,setMode,setF,setStar,setProgress,deleteTask,toggleDone,
+  editTask,undo,redo,applyS,toggleS,applyAccent,applyTheme,exportData,importData,
+  clearData,triggerInstall,testNotif,toggleAlarm,authTab,renderAll,
+  fetchAI,renderHome,renderTasks,renderDash,renderViz,renderTimer,renderSettings
+});
 </script>
 </body>
 </html>
