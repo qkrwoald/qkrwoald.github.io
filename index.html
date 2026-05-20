@@ -603,6 +603,33 @@ canvas{width:100%;display:block;}
 .set-slider-lbl { font-size:15px; color:var(--ink); font-weight:500; }
 .set-slider-val { font-size:13px; color:var(--terracotta); font-weight:600; font-family:var(--f-mono); }
 
+
+/* Gmail 연동 모달 */
+.gmail-modal-ov{
+  position:fixed;inset:0;background:rgba(44,40,37,.6);z-index:400;
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+.gmail-modal-ov.open{display:flex;animation:ovi .18s ease;}
+.gmail-modal{
+  width:100%;max-width:380px;background:var(--paper2);
+  border-radius:var(--r-xl);padding:28px 22px;
+  box-shadow:var(--shadow-lg);border:1px solid var(--divider);
+}
+.gmail-modal-icon{font-size:40px;text-align:center;margin-bottom:12px;}
+.gmail-modal-title{font-family:var(--f-disp);font-size:20px;font-weight:700;color:var(--ink);text-align:center;margin-bottom:8px;}
+.gmail-modal-desc{font-size:13px;color:var(--ink2);line-height:1.7;margin-bottom:18px;}
+.gmail-modal-steps{background:var(--paper3);border-radius:var(--r);padding:12px 14px;margin-bottom:18px;font-size:12px;color:var(--ink2);line-height:2;}
+.gmail-modal-steps a{color:var(--terracotta);font-weight:600;}
+.gmail-modal-input{
+  width:100%;padding:12px 14px;background:var(--paper);
+  border:1.5px solid var(--divider);border-radius:var(--r);
+  color:var(--ink);font-size:15px;font-family:var(--f-mono);
+  letter-spacing:.1em;margin-bottom:14px;
+  transition:border-color .18s;
+}
+.gmail-modal-input:focus{outline:none;border-color:var(--terracotta);box-shadow:0 0 0 3px var(--tc-mid);}
+.gmail-modal-err{font-size:12px;color:var(--rose);margin-bottom:10px;display:none;}
+
 /* PWA install prompt */
 #install-prompt{
   position:fixed;bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 12px);
@@ -674,7 +701,7 @@ canvas{width:100%;display:block;}
     <div class="pg on" id="pg-home">
       <div id="ai-slot"></div>
       <div class="srow" id="home-stats"></div>
-      <div style="margin:14px 0 4px;display:flex;align-items:center;justify-content:space-between"><div class="sec" style="margin:0">추천 학습 순서</div><button class="btn btn-line" id="gmail-sync-btn" onclick="syncGmail()" style="font-size:12px;padding:6px 12px;display:flex;align-items:center;gap:5px"><span>📧</span><span>Gmail 동기화</span></button></div><div id="gmail-status" style="font-size:12px;color:var(--ink3);margin-bottom:8px;display:none"></div><div id="home-list"></div>
+      <div style="margin:14px 0 4px;display:flex;align-items:center;justify-content:space-between"><div class="sec" style="margin:0">추천 학습 순서</div><button class="btn btn-line" id="gmail-sync-btn" onclick="syncGmail()" style="font-size:12px;padding:6px 12px;display:none;align-items:center;gap:5px"><span>📧</span><span>Gmail 동기화</span></button></div><div id="gmail-status" style="font-size:12px;color:var(--ink3);margin-bottom:8px;display:none"></div><div id="home-list"></div>
     </div>
 
     <!-- TASKS -->
@@ -973,6 +1000,23 @@ canvas{width:100%;display:block;}
         </div>
       </div>
 
+
+      <!-- Gmail 연동 -->
+      <div class="sec">Gmail 연동</div>
+      <div class="set-section">
+        <div class="set-section-hd">Google Classroom 과제 자동 가져오기</div>
+        <div class="set-toggle-row">
+          <div>
+            <div class="set-toggle-label">Gmail 자동 동기화</div>
+            <div class="set-toggle-desc" id="gmail-link-desc">연동되지 않음</div>
+          </div>
+          <button class="tgl" id="tgl-gmail" onclick="toggleGmailLink(this)"></button>
+        </div>
+        <div style="padding:12px 0">
+          <button class="btn btn-line btn-w" onclick="openGmailModal(true)">🔑 앱 비밀번호 재설정</button>
+        </div>
+      </div>
+
       <!-- 데이터 -->
       <div class="sec">데이터</div>
       <div class="set-section">
@@ -1034,6 +1078,31 @@ canvas{width:100%;display:block;}
   <div class="ip-text"><strong>KSATUDY 앱으로 설치</strong>홈 화면에 추가하면 앱처럼 사용 가능!</div>
   <button class="ip-btn" id="ip-install-btn">설치</button>
   <button class="ip-x" id="ip-close">✕</button>
+</div>
+
+
+<!-- Gmail 연동 모달 -->
+<div class="gmail-modal-ov" id="gmail-modal-ov">
+  <div class="gmail-modal">
+    <div class="gmail-modal-icon">📧</div>
+    <div class="gmail-modal-title">Gmail 연동 설정</div>
+    <div class="gmail-modal-desc">
+      Google Classroom 과제를 자동으로 가져오려면<br>
+      Gmail 앱 비밀번호가 필요해요. 최초 1회만 입력하면 돼요!
+    </div>
+    <div class="gmail-modal-steps">
+      1️⃣ <a href="https://myaccount.google.com/apppasswords" target="_blank">myaccount.google.com/apppasswords</a> 접속<br>
+      2️⃣ 앱 이름 <strong>ksatudy</strong> 입력 → 만들기<br>
+      3️⃣ 발급된 16자리 비밀번호 아래에 입력
+    </div>
+    <div class="gmail-modal-err" id="gmail-modal-err"></div>
+    <input class="gmail-modal-input" type="password" id="gmail-pw-input"
+      placeholder="앱 비밀번호 16자리 (공백 없이)" maxlength="20" autocomplete="off">
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-line" style="flex:1" onclick="closeGmailModal(false)">나중에</button>
+      <button class="btn btn-main" style="flex:2" onclick="submitGmailPassword()">연동하기</button>
+    </div>
+  </div>
 </div>
 
 <div id="toasts"></div>
@@ -1246,7 +1315,7 @@ let timerIv=null,timerSecs=25*60,timerTotal=25*60,timerRunning=false,timerMins=2
 let pomoC=0,pomoC2=0,focusId=null;
 const CIRC=2*Math.PI*74;
 
-let S={theme:'light',accent:'',fontSize:15,w1:.5,w2:.3,w3:.2,pomoDur:25,breakDur:5,vibrate:true,showAI:true,showScore:true,showDone:true,defaultSort:'priority',alarmOn:true,alarm1day:true,alarm3h:true,alarm1h:true};
+let S={theme:'light',accent:'',fontSize:15,w1:.5,w2:.3,w3:.2,pomoDur:25,breakDur:5,vibrate:true,showAI:true,showScore:true,showDone:true,defaultSort:'priority',alarmOn:true,alarm1day:true,alarm3h:true,alarm1h:true,gmailLinked:false,gmailPwEnc:'',gmailSkipped:false};
 
 const SCOLS=['#5B7B5A','#4A6580','#B8932A','#C0535A','#7B6FA0','#2D8F76','#A07040'];
 let scmap={},scidx=0;
@@ -1534,6 +1603,7 @@ function renderSettings(){
   }
   document.getElementById('pname').textContent=CU.name;
   document.getElementById('puid').textContent=CU.email||('@'+CU.uid);
+  updateGmailSettingsUI();
 }
 
 let deferredPrompt=null;
@@ -1705,10 +1775,137 @@ function clearData(){if(!confirm('모든 과제를 삭제할까요? 되돌릴 �
 /* ══════════════════════════════════════
    GMAIL IMAP SYNC (Cloudflare Worker)
 ══════════════════════════════════════ */
+/* ══════════════════════════════════════
+   GMAIL 연동 — AES 암호화 + Firestore
+══════════════════════════════════════ */
+const GMAIL_ENC_KEY = 'ksatudy-gmail-enc-v1'; // 고정 키 (uid와 결합)
+
+async function deriveKey(uid) {
+  const raw = new TextEncoder().encode(GMAIL_ENC_KEY + uid);
+  const hash = await crypto.subtle.digest('SHA-256', raw);
+  return crypto.subtle.importKey('raw', hash, {name:'AES-GCM'}, false, ['encrypt','decrypt']);
+}
+
+async function encryptPw(pw, uid) {
+  const key = await deriveKey(uid);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(pw));
+  const buf = new Uint8Array(iv.length + enc.byteLength);
+  buf.set(iv); buf.set(new Uint8Array(enc), iv.length);
+  return btoa(String.fromCharCode(...buf));
+}
+
+async function decryptPw(b64, uid) {
+  const key = await deriveKey(uid);
+  const buf = new Uint8Array(atob(b64).split('').map(c=>c.charCodeAt(0)));
+  const iv = buf.slice(0,12), data = buf.slice(12);
+  const dec = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, data);
+  return new TextDecoder().decode(dec);
+}
+
+async function saveGmailPw(pw) {
+  const enc = await encryptPw(pw, CU.uid);
+  S.gmailLinked = true;
+  S.gmailPwEnc = enc;
+  await saveStateAsync();
+}
+
+async function getGmailPw() {
+  if (!S.gmailLinked || !S.gmailPwEnc) return null;
+  try { return await decryptPw(S.gmailPwEnc, CU.uid); }
+  catch { return null; }
+}
+
+function openGmailModal(isReset=false) {
+  const input = document.getElementById('gmail-pw-input');
+  const err = document.getElementById('gmail-modal-err');
+  if (input) { input.value=''; }
+  if (err) err.style.display='none';
+  document.getElementById('gmail-modal-ov').classList.add('open');
+}
+
+function closeGmailModal(linked) {
+  document.getElementById('gmail-modal-ov').classList.remove('open');
+  if (!linked) {
+    // 나중에 누른 경우 — 연동 안 함으로 표시
+    S.gmailLinked = false;
+    S.gmailSkipped = true;
+    saveState();
+    updateGmailSettingsUI();
+  }
+}
+
+async function submitGmailPassword() {
+  const input = document.getElementById('gmail-pw-input');
+  const err = document.getElementById('gmail-modal-err');
+  const pw = input.value.replace(/\s/g,'');
+  if (pw.length !== 16) {
+    err.textContent = '앱 비밀번호는 공백 없이 16자리여야 해요.';
+    err.style.display = 'block'; return;
+  }
+  err.style.display = 'none';
+  input.disabled = true;
+
+  // Worker에 테스트 요청
+  try {
+    const res = await fetch('https://ksatudy-imap.jaeminpark0502.workers.dev', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email: CU.email, appPassword: pw, testOnly: true})
+    });
+    const data = await res.json();
+    if (data.error && data.error.includes('로그인')) {
+      err.textContent = '앱 비밀번호가 틀렸어요. 다시 확인해주세요.';
+      err.style.display = 'block'; input.disabled = false; return;
+    }
+  } catch(e) { /* 네트워크 오류는 그냥 저장 */ }
+
+  await saveGmailPw(pw);
+  input.disabled = false;
+  closeGmailModal(true);
+  updateGmailSettingsUI();
+  toast('📧 Gmail 연동 완료!', 'ok');
+}
+
+function toggleGmailLink(btn) {
+  if (!S.gmailLinked) {
+    // 연동 안 된 상태에서 켜려 하면 모달 열기
+    openGmailModal(false);
+    return;
+  }
+  S.gmailLinked = !S.gmailLinked;
+  btn.classList.toggle('on', S.gmailLinked);
+  saveState();
+  updateGmailSettingsUI();
+}
+
+function updateGmailSettingsUI() {
+  const tgl = document.getElementById('tgl-gmail');
+  const desc = document.getElementById('gmail-link-desc');
+  const syncBtn = document.getElementById('gmail-sync-btn');
+  if (!tgl) return;
+  if (S.gmailLinked && S.gmailPwEnc) {
+    tgl.classList.add('on');
+    if (desc) desc.textContent = '연동됨 ✓';
+    if (syncBtn) syncBtn.style.display = 'flex';
+  } else {
+    tgl.classList.remove('on');
+    if (desc) desc.textContent = '연동되지 않음';
+    if (syncBtn) syncBtn.style.display = 'none';
+  }
+}
+
 async function syncGmail(){
   const btn=document.getElementById('gmail-sync-btn');
   const status=document.getElementById('gmail-status');
   if(!CU?.email){toast('로그인이 필요합니다','err');return;}
+
+  // 앱 비밀번호 가져오기
+  const appPw = await getGmailPw();
+  if (!appPw) {
+    openGmailModal(false);
+    return;
+  }
+
   btn.innerHTML='<span>⏳</span><span>불러오는 중...</span>';
   btn.disabled=true;
   status.style.display='block';
@@ -1716,7 +1913,7 @@ async function syncGmail(){
   try{
     const res=await fetch('https://ksatudy-imap.jaeminpark0502.workers.dev',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email:CU.email})
+      body:JSON.stringify({email:CU.email, appPassword:appPw})
     });
     const data=await res.json();
     if(data.error){
@@ -1751,6 +1948,10 @@ async function syncGmail(){
 function saveState(){
   if(!CU)return;
   saveUD(CU.uid,{tasks,nid,settings:S,pomoCount:pomoC,scmap,activityLog:actm.m});
+}
+async function saveStateAsync(){
+  if(!CU)return;
+  await saveUD(CU.uid,{tasks,nid,settings:S,pomoCount:pomoC,scmap,activityLog:actm.m});
 }
 async function loadState(uid){
   const d=await loadUD(uid);if(!d)return false;
@@ -1798,6 +1999,12 @@ async function initApp(session){
   // 새 유저는 빈 상태로 시작 (데모 데이터 없음)
   rebuild();applyTheme();renderPomoDots();showPg('home');
   if(window.matchMedia('(prefers-color-scheme: dark)').matches&&S.theme==='system'){document.documentElement.dataset.theme='dark';}
+  // Gmail 연동 UI 업데이트
+  updateGmailSettingsUI();
+  // 첫 로그인이고 아직 Gmail 설정 안 한 경우 모달 표시
+  if(!S.gmailLinked && !S.gmailSkipped && !S.gmailPwEnc){
+    setTimeout(()=>openGmailModal(false), 1200);
+  }
   // 알람 시스템 시작
   setTimeout(startAlarmSystem, 1000);
 }
