@@ -674,8 +674,7 @@ canvas{width:100%;display:block;}
     <div class="pg on" id="pg-home">
       <div id="ai-slot"></div>
       <div class="srow" id="home-stats"></div>
-      <div class="sec" style="margin-top:16px">추천 학습 순서</div>
-      <div id="home-list"></div>
+      <div style="margin:14px 0 4px;display:flex;align-items:center;justify-content:space-between"><div class="sec" style="margin:0">추천 학습 순서</div><button class="btn btn-line" id="classroom-btn" onclick="syncClassroom()" style="font-size:12px;padding:6px 12px;display:flex;align-items:center;gap:5px"><span>🎓</span><span>Classroom 동기화</span></button></div><div id="classroom-status" style="font-size:12px;color:var(--ink3);margin-bottom:8px;display:none"></div><div id="home-list"></div>
     </div>
 
     <!-- TASKS -->
@@ -1208,7 +1207,7 @@ function doGoogleLogin(){
 
   const client = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_CLIENT_ID,
-    scope: 'openid email profile',
+    scope: 'openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly https://www.googleapis.com/auth/classroom.student-submissions.me.readonly',
     hd: ALLOWED_DOMAIN,
     callback: async (tokenResp) => {
       if(tokenResp.error){
@@ -1724,6 +1723,93 @@ function importData(inp){
   rd.readAsText(f);inp.value='';
 }
 function clearData(){if(!confirm('모든 과제를 삭제할까요? 되돌릴 수 없습니다.'))return;tasks=[];nid=1;undoSt.clear();redoSt.clear();pomoC=0;actm.m={};rebuild();saveState();renderAll();toast('삭제됨','ok');}
+
+/* ══════════════════════════════════════
+   GOOGLE CLASSROOM SYNC
+══════════════════════════════════════ */
+async function syncClassroom(){
+  const btn=document.getElementById('classroom-btn');
+  const status=document.getElementById('classroom-status');
+  if(!CU?.accessToken){toast('다시 로그인해주세요','err');return;}
+
+  btn.innerHTML='<span>⏳</span><span>불러오는 중...</span>';
+  btn.disabled=true;
+  status.style.display='block';
+  status.textContent='Google Classroom에서 과제를 불러오는 중...';
+
+  try{
+    // 1. 수강 중인 강의 목록
+    const cRes=await fetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE',{
+      headers:{Authorization:'Bearer '+CU.accessToken}
+    });
+    if(!cRes.ok){
+      const err=await cRes.json();
+      // 학교 정책으로 막힌 경우
+      if(cRes.status===403){
+        const msg=err.error?.message||'';
+        if(msg.includes('admin')||msg.includes('policy')){
+          status.textContent='❌ 학교 관리자가 외부 앱의 Classroom 접근을 차단했습니다.';
+        } else {
+          status.textContent='❌ Classroom 접근 권한이 없습니다. 로그아웃 후 다시 로그인해주세요.';
+        }
+      } else if(cRes.status===401){
+        status.textContent='❌ 로그인이 만료됐습니다. 로그아웃 후 다시 로그인해주세요.';
+      } else {
+        status.textContent='❌ 오류: '+( err.error?.message||cRes.status);
+      }
+      btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>';
+      btn.disabled=false;
+      return;
+    }
+
+    const courses=(await cRes.json()).courses||[];
+    if(!courses.length){
+      status.textContent='수강 중인 강의가 없습니다.';
+      btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>';
+      btn.disabled=false;
+      return;
+    }
+
+    // 2. 각 강의의 과제 목록
+    let added=0, skipped=0;
+    for(const course of courses){
+      const wRes=await fetch(
+        `https://classroom.googleapis.com/v1/courses/${course.id}/courseWork?courseWorkStates=PUBLISHED`,
+        {headers:{Authorization:'Bearer '+CU.accessToken}}
+      );
+      if(!wRes.ok) continue;
+      const works=(await wRes.json()).courseWork||[];
+
+      for(const work of works){
+        // 마감일 없으면 skip
+        if(!work.dueDate) continue;
+        const {year,month,day}=work.dueDate;
+        const dl=`${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+
+        // 이미 같은 이름+과목으로 등록된 과제면 skip
+        const exists=tasks.some(t=>t.name===work.title&&t.subject===course.name);
+        if(exists){skipped++;continue;}
+
+        // 마감이 이미 지난 과제 skip
+        if(new Date(dl)<new Date(new Date().toDateString())){skipped++;continue;}
+
+        addTask(course.name, work.title, dl, 3, 2, work.description?.slice(0,100)||'');
+        added++;
+      }
+    }
+
+    status.textContent=`✅ ${courses.length}개 강의에서 ${added}개 과제 추가됨${skipped?` (${skipped}개 중복/기한초과 제외)`:''}`;
+    if(added>0) toast(`🎓 Classroom에서 ${added}개 과제 추가됨`,'ok');
+    else toast('새로 추가된 과제가 없습니다');
+
+  }catch(e){
+    console.error('Classroom sync error:',e);
+    status.textContent='❌ 네트워크 오류가 발생했습니다.';
+  }
+
+  btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>';
+  btn.disabled=false;
+}
 
 /* PERSIST */
 function saveState(){
