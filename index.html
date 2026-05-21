@@ -627,6 +627,33 @@ canvas{width:100%;display:block;}
 .gmail-suggest-hr{width:60px;padding:4px 8px;background:var(--paper);border:1.5px solid var(--divider);border-radius:var(--r-xs);color:var(--ink);font-size:13px;text-align:center;}
 .gmail-suggest-btns{display:flex;gap:6px;}
 
+/* 드래그 과제 칩 */
+.drag-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:6px 11px;border-radius:20px;
+  font-size:12px;font-weight:600;cursor:grab;
+  border:1.5px solid var(--divider);background:var(--paper2);
+  color:var(--ink2);user-select:none;touch-action:none;
+  transition:box-shadow .15s,transform .15s;
+}
+.drag-chip:active{cursor:grabbing;box-shadow:var(--shadow);transform:scale(1.04);}
+.drag-chip.dragging{opacity:.5;}
+
+/* 드롭 슬롯 하이라이트 */
+.drop-slot-hover{background:var(--tc-mid)!important;}
+
+/* 배치된 과제 블록 */
+.sched-task-block{
+  position:absolute;left:2px;right:2px;
+  border-radius:0 var(--r-xs) var(--r-xs) 0;
+  padding:3px 5px;overflow:hidden;cursor:pointer;
+  border-left:3px solid var(--terracotta);
+  background:var(--tc-pale);
+  z-index:3;
+  transition:filter .15s;
+}
+.sched-task-block:active{filter:brightness(.92);}
+
 /* Gmail 연동 모달 */
 .gmail-modal-ov{
   position:fixed;inset:0;background:rgba(44,40,37,.6);z-index:400;
@@ -706,7 +733,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.1 · 2026-05-21
+    v2.6.2 · 2026-05-21
   </div>
 </div>
 
@@ -831,8 +858,9 @@ canvas{width:100%;display:block;}
         </div>
       </div>
       <div id="schedule-grid" style="overflow-x:auto;-webkit-overflow-scrolling:touch"></div>
-      <div class="sec" style="margin-top:16px">과제 수행 추천</div>
-      <div id="schedule-recommend" style="font-size:13px;color:var(--ink3)">시간표가 로드되면 빈 시간에 과제를 배치해드려요.</div>
+      <div class="sec" style="margin-top:16px">과제 드래그</div>
+      <div style="font-size:11px;color:var(--ink3);margin-bottom:8px">과제를 잡고 시간표에 드롭하세요 · 배치된 블록을 누르면 삭제</div>
+      <div id="drag-task-list" style="display:flex;flex-wrap:wrap;gap:6px;padding-bottom:8px"></div>
     </div>
 
     <!-- 힙 (숨김 유지 - 내부 로직용) -->
@@ -2566,7 +2594,7 @@ function renderSchedule(){
   const weekLabel = document.getElementById('sched-week-label');
   if(weekLabel){
     const m1=dates[0].getMonth()+1, d1=dates[0].getDate();
-    const m2=dates[4].getMonth()+1, d2=dates[4].getDate();
+    const m2=dates[6].getMonth()+1, d2=dates[6].getDate();
     weekLabel.textContent = `${m1}/${d1} ~ ${m2}/${d2}`;
   }
 
@@ -2633,6 +2661,37 @@ function renderSchedule(){
       </div>`;
     });
 
+    // 30분 드롭 슬롯 (투명, 클릭/드래그 수신용)
+    const dateStr2 = dates[di].toISOString().slice(0,10);
+    const totalSlots = (SCHOOL_END-SCHOOL_START)*2;
+    for(let s=0;s<totalSlots;s++){
+      const slotMin = s*30;
+      const top2 = slotMin/60*slotH;
+      html+=`<div
+        style="position:absolute;top:${top2}px;left:0;right:0;height:${slotH/2}px;z-index:1;box-sizing:border-box;"
+        data-slot="1" data-day="${day}" data-slotmin="${SCHOOL_START*60+slotMin}" data-datestr="${dateStr2}"
+        ondragover="onSlotDragOver(event)"
+        ondragleave="onSlotDragLeave(event)"
+        ondrop="onSlotDrop(event,'${day}',${SCHOOL_START*60+slotMin},'${dateStr2}')"
+      ></div>`;
+    }
+
+    // 배치된 과제 블록
+    scheduledBlocks.filter(b=>b.day===day&&b.dateStr===dateStr2).forEach(b=>{
+      const t=tasks.find(t=>t.id===b.taskId);
+      if(!t) return;
+      const top2=((b.startMin-SCHOOL_START*60)/60)*slotH;
+      const h2=((b.endMin-b.startMin)/60)*slotH;
+      const key=getScheduledBlockKey(b);
+      const c=sc(t.subject||'');
+      html+=`<div class="sched-task-block"
+        style="top:${top2+1}px;height:${h2-2}px;border-left-color:${c};background:${c}22;"
+        onclick="removeScheduledBlock('${key}')" title="클릭하면 삭제">
+        <div style="font-size:10px;font-weight:700;color:${c};line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">✏ ${t.name}</div>
+        ${h2>28?`<div style="font-size:9px;color:var(--ink3)">${minutesToTime(b.startMin)}~${minutesToTime(b.endMin)}</div>`:''}
+      </div>`;
+    });
+
     // 현재 시간 표시선 (오늘이면)
     const dateStr = dates[di].toISOString().slice(0,10);
     if(dateStr===todayStr){
@@ -2640,7 +2699,7 @@ function renderSchedule(){
       const nowMin = now.getHours()*60+now.getMinutes()-SCHOOL_START*60;
       if(nowMin>0 && nowMin<totalMins){
         const top = nowMin/60*slotH;
-        html+=`<div style="position:absolute;top:${top}px;left:0;right:0;border-top:2px solid var(--terracotta);z-index:2">
+        html+=`<div style="position:absolute;top:${top}px;left:0;right:0;border-top:2px solid var(--terracotta);z-index:4">
           <div style="width:7px;height:7px;border-radius:50%;background:var(--terracotta);margin-top:-4.5px;margin-left:-1px"></div>
         </div>`;
       }
@@ -2652,25 +2711,149 @@ function renderSchedule(){
   html += `</div>`;
   grid.innerHTML = html;
 
-  renderScheduleRecommend(dates);
+  // 드래그 과제 칩 렌더
+  renderDragTaskList();
 }
 
-function renderScheduleRecommend(dates){
-  const el = document.getElementById('schedule-recommend');
-  if(!el) return;
-  const pending = tasks.filter(t=>!t.done && t.deadline).sort((a,b)=>new Date(a.deadline)-new Date(b.deadline));
-  if(!pending.length){ el.innerHTML='<div style="color:var(--ink3);font-size:13px">진행 중인 과제가 없습니다.</div>'; return; }
-  el.innerHTML = pending.slice(0,3).map(t=>{
-    const u=urgInfo(t);
-    return `<div class="card" style="margin-bottom:8px;display:flex;align-items:center;gap:10px">
-      <div style="width:8px;height:8px;border-radius:50%;background:${u.col};flex-shrink:0"></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:var(--ink)">${t.name}</div>
-        <div style="font-size:11px;color:var(--ink3)">${t.subject} · ${t.hours}h 필요 · <span style="color:${u.col}">${u.label}</span></div>
-      </div>
-    </div>`;
-  }).join('')+'<div style="font-size:11px;color:var(--ink4);margin-top:4px">KSAIN API 연동 후 빈 시간에 자동 배치됩니다.</div>';
+/* 배치된 과제 블록 저장 */
+let scheduledBlocks = []; // [{taskId, day, startMin, endMin, dateStr}]
+let dragTaskId = null; // 현재 드래그 중인 과제 ID
+
+function getScheduledBlockKey(b){ return `${b.day}::${b.dateStr}::${b.startMin}`; }
+
+function removeScheduledBlock(key){
+  scheduledBlocks = scheduledBlocks.filter(b=>getScheduledBlockKey(b)!==key);
+  renderSchedule();
 }
+
+function minutesToTime(m){
+  const h=Math.floor(m/60), min=m%60;
+  return String(h).padStart(2,'0')+':'+String(min).padStart(2,'0');
+}
+
+/* 드래그 과제 칩 렌더 */
+function renderDragTaskList(){
+  const el=document.getElementById('drag-task-list');
+  if(!el) return;
+  const pending=tasks.filter(t=>!t.done).sort((a,b)=>(b.score||0)-(a.score||0));
+  if(!pending.length){
+    el.innerHTML='<div style="font-size:13px;color:var(--ink3)">진행 중인 과제가 없습니다.</div>';
+    return;
+  }
+  el.innerHTML=pending.map(t=>{
+    const c=sc(t.subject||'');
+    return `<div class="drag-chip" id="chip-${t.id}"
+      draggable="true"
+      ondragstart="onChipDragStart(event,${t.id})"
+      ondragend="onChipDragEnd(event)"
+      style="border-color:${c}22;color:${c}"
+      data-taskid="${t.id}">
+      <span style="width:7px;height:7px;border-radius:50%;background:${c};flex-shrink:0;display:inline-block"></span>
+      ${t.name.length>14?t.name.slice(0,13)+'…':t.name}
+      <span style="font-size:10px;opacity:.6">${t.hours}h</span>
+    </div>`;
+  }).join('');
+  // 터치 이벤트 등록
+  pending.forEach(t=>{
+    const chip=document.getElementById('chip-'+t.id);
+    if(chip) setupTouchDrag(chip, t.id);
+  });
+}
+
+/* PC 드래그 이벤트 */
+function onChipDragStart(e, taskId){
+  dragTaskId=taskId;
+  e.dataTransfer.effectAllowed='copy';
+  const chip=document.getElementById('chip-'+taskId);
+  if(chip) chip.classList.add('dragging');
+}
+function onChipDragEnd(e){
+  document.getElementById('chip-'+dragTaskId)?.classList.remove('dragging');
+  dragTaskId=null;
+  document.querySelectorAll('.drop-slot-hover').forEach(el=>el.classList.remove('drop-slot-hover'));
+}
+
+/* 드롭 슬롯 이벤트 */
+function onSlotDragOver(e){
+  e.preventDefault();
+  e.dataTransfer.dropEffect='copy';
+  e.currentTarget.classList.add('drop-slot-hover');
+}
+function onSlotDragLeave(e){
+  e.currentTarget.classList.remove('drop-slot-hover');
+}
+function onSlotDrop(e, day, slotMin, dateStr){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drop-slot-hover');
+  if(dragTaskId===null) return;
+  const t=tasks.find(t=>t.id===dragTaskId);
+  if(!t) return;
+  // 소요시간(hours)을 30분 단위로 올림
+  const durationMin=Math.ceil((t.hours||1)*60/30)*30;
+  const endMin=slotMin+durationMin;
+  // 수업 시간과 겹치는지 체크
+  const dayClasses=TIMETABLE[day]||[];
+  const overlap=dayClasses.some(c=>{
+    const cs=timeToMinutes(c.start)-SCHOOL_START*60;
+    const ce=timeToMinutes(c.end)-SCHOOL_START*60;
+    return slotMin<ce && endMin>cs;
+  });
+  if(overlap){ toast('수업 시간과 겹칩니다','err'); return; }
+  // 기존 같은 슬롯 블록 제거
+  scheduledBlocks=scheduledBlocks.filter(b=>!(b.day===day&&b.dateStr===dateStr&&b.startMin===slotMin));
+  scheduledBlocks.push({taskId:dragTaskId,day,startMin:slotMin,endMin,dateStr});
+  dragTaskId=null;
+  renderSchedule();
+  toast(`"${t.name}" 배치됨 ✓`,'ok');
+}
+
+/* 터치 드래그 (모바일) */
+function setupTouchDrag(chip, taskId){
+  let touchClone=null, startX=0, startY=0;
+  chip.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1) return;
+    dragTaskId=taskId;
+    startX=e.touches[0].clientX; startY=e.touches[0].clientY;
+    // 클론 생성
+    touchClone=chip.cloneNode(true);
+    touchClone.style.cssText=`position:fixed;z-index:9999;opacity:.85;pointer-events:none;
+      left:${startX-chip.offsetWidth/2}px;top:${startY-20}px;
+      font-size:12px;padding:6px 11px;border-radius:20px;
+      background:var(--paper2);border:1.5px solid var(--divider);color:var(--ink2);`;
+    document.body.appendChild(touchClone);
+    chip.classList.add('dragging');
+  },{passive:true});
+
+  chip.addEventListener('touchmove',e=>{
+    if(!touchClone) return;
+    e.preventDefault();
+    const t=e.touches[0];
+    touchClone.style.left=(t.clientX-chip.offsetWidth/2)+'px';
+    touchClone.style.top=(t.clientY-20)+'px';
+    // 현재 위치 아래 요소 찾기
+    touchClone.style.display='none';
+    const el=document.elementFromPoint(t.clientX, t.clientY);
+    touchClone.style.display='';
+    document.querySelectorAll('.drop-slot-hover').forEach(s=>s.classList.remove('drop-slot-hover'));
+    if(el?.dataset?.slot) el.classList.add('drop-slot-hover');
+  },{passive:false});
+
+  chip.addEventListener('touchend',e=>{
+    if(touchClone){ touchClone.remove(); touchClone=null; }
+    chip.classList.remove('dragging');
+    if(dragTaskId===null) return;
+    const t2=e.changedTouches[0];
+    const el=document.elementFromPoint(t2.clientX, t2.clientY);
+    if(el?.dataset?.slot){
+      const {day,slotmin,datestr}=el.dataset;
+      onSlotDrop({preventDefault:()=>{},currentTarget:el}, day, parseInt(slotmin), datestr);
+    } else { dragTaskId=null; }
+    document.querySelectorAll('.drop-slot-hover').forEach(s=>s.classList.remove('drop-slot-hover'));
+  },{passive:true});
+}
+
+function renderScheduleRecommend(dates){}  // 기존 추천 섹션 제거 (드래그로 대체)
+
 
 /* ══════════════════════════════════════
    ALARM SYSTEM
