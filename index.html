@@ -704,7 +704,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.5.3 · 2026-05-21
+    v2.5.4 · 2026-05-21
   </div>
 </div>
 
@@ -1055,6 +1055,19 @@ canvas{width:100%;display:block;}
         </div>
         <div style="padding:12px 0">
           <button class="btn btn-line btn-w" onclick="openGmailModal(true)">🔑 앱 비밀번호 재설정</button>
+        </div>
+      </div>
+
+      <!-- 과목 관리 -->
+      <div class="sec">과목 관리</div>
+      <div class="set-section">
+        <div class="set-section-hd">과목 목록 (드롭다운에 표시)</div>
+        <div id="subject-list-ui" style="padding:10px 0"></div>
+        <div style="padding:10px 0;border-top:1px solid var(--divider);display:flex;gap:8px">
+          <input type="text" id="new-subject-input" placeholder="새 과목명 입력"
+            style="flex:1;padding:9px 12px;background:var(--paper);border:1.5px solid var(--divider);border-radius:var(--r);color:var(--ink);font-size:14px;"
+            onkeydown="if(event.key==='Enter')addCustomSubject()">
+          <button class="btn btn-main" style="padding:9px 14px;font-size:13px" onclick="addCustomSubject()">추가</button>
         </div>
       </div>
 
@@ -1446,7 +1459,13 @@ function setProgress(id,v){
   const t=tasks.find(t=>t.id===id);if(!t)return;
   undoSt.push({type:'prog',id,prev:t.progress,desc:`"${t.name}" ${v}%`});redoSt.clear();
   t.progress=v;if(v===100){t.done=true;toast('🎉 완료!','ok');}
-  rebuild();saveState();renderAll();
+  rebuild();saveState();
+  // 진행률 변경 시 열려있던 창 유지하면서 렌더
+  renderAllKeepExp();
+}
+function renderAllKeepExp(){
+  // 현재 열린 exp 목록 보존한 채 renderAll
+  renderAll();
 }
 function doUndo(){
   const cmd=undoSt.pop();if(!cmd){toast('취소할 작업 없음');return;}
@@ -1520,7 +1539,7 @@ function tCardHTML(t,rank){
       <button onclick="markDone(${t.id})" style="font-size:12px;font-weight:600;color:var(--moss);background:var(--moss-pale);border:1.5px solid rgba(91,123,90,.25);border-radius:6px;padding:3px 10px;cursor:pointer">완료 ✓</button>
     </div>`:''}
   </div>
-  <div class="texp" id="exp-${t.id}">
+  <div class="texp${openExpIds.has(t.id)?' open':''}" id="exp-${t.id}">
     <div class="egrid">
       <div class="eitem"><label>마감일</label><div class="ev">${t.deadline}</div></div>
       <div class="eitem"><label>우선순위 점수</label><div class="ev" style="color:${u.col}">${t.score?.toFixed(3)}</div></div>
@@ -1538,7 +1557,13 @@ function tCardHTML(t,rank){
   </div>
 </div>`;
 }
-function toggleExp(id){const el=document.getElementById('exp-'+id);if(el)el.classList.toggle('open');}
+const openExpIds = new Set();
+function toggleExp(id){
+  const el=document.getElementById('exp-'+id);
+  if(!el) return;
+  if(openExpIds.has(id)){ openExpIds.delete(id); el.classList.remove('open'); }
+  else { openExpIds.add(id); el.classList.add('open'); }
+}
 
 /* HOME */
 function renderHome(){
@@ -1661,6 +1686,8 @@ function renderSettings(){
   document.getElementById('puid').textContent=CU.email||('@'+CU.uid);
   updateGmailSettingsUI();
   updateIgnoredCount();
+  renderSubjectListUI();
+  updSubjectSelect();
 }
 
 let deferredPrompt=null;
@@ -1677,13 +1704,26 @@ function renderUndoDots(){
 }
 
 // 고정 과목 리스트
-const FIXED_SUBJECTS = ['자료구조', '물리학및실험2'];
+const DEFAULT_SUBJECTS = ['자료구조', '물리학및실험2'];
+function getCustomSubjects(){ try{ return JSON.parse(localStorage.getItem('sq_subjects')||'null') || [...DEFAULT_SUBJECTS]; }catch{ return [...DEFAULT_SUBJECTS]; } }
+function saveCustomSubjects(list){ localStorage.setItem('sq_subjects', JSON.stringify(list)); }
 
 function updSubjDL(){
   const dl=document.getElementById('subdl');if(!dl)return;
   const taskSubjects=[...new Set(tasks.map(t=>t.subject).filter(Boolean))];
-  const all=[...new Set([...FIXED_SUBJECTS, ...taskSubjects])];
+  const all=[...new Set([...getCustomSubjects(), ...taskSubjects])];
   dl.innerHTML=all.map(s=>`<option value="${s}">`).join('');
+  // select도 업데이트
+  updSubjectSelect();
+}
+function updSubjectSelect(){
+  const sel=document.getElementById('f-sub-select');if(!sel)return;
+  const cur=sel.value;
+  const subjects=getCustomSubjects();
+  sel.innerHTML=`<option value="">— 과목 선택 —</option>`+
+    subjects.map(s=>`<option value="${s}">${s}</option>`).join('')+
+    `<option value="__direct__">직접 입력</option>`;
+  if(cur) sel.value=cur;
 }
 
 function onSubjectSelect(val){
@@ -1713,7 +1753,7 @@ function setSubjectValue(val){
     return;
   }
   // 고정 목록에 있으면 select로, 없으면 직접입력
-  const inFixed = FIXED_SUBJECTS.includes(val);
+  const inFixed = getCustomSubjects().includes(val);
   if(inFixed){
     select.value=val;
     input.style.display='none';
@@ -2214,6 +2254,45 @@ function gmailSuggestAdd(idx){
     document.getElementById('f-hr').value=a._hours||2;
     updateSP();
   },400);
+}
+
+/* 과목 관리 */
+function renderSubjectListUI(){
+  const el=document.getElementById('subject-list-ui');
+  if(!el)return;
+  const subjects=getCustomSubjects();
+  if(!subjects.length){
+    el.innerHTML='<div style="font-size:13px;color:var(--ink3);padding:4px 0">과목이 없습니다</div>';
+    return;
+  }
+  el.innerHTML=subjects.map((s,i)=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--divider)">
+      <span style="font-size:14px;color:var(--ink)">${s}</span>
+      <button onclick="removeCustomSubject(${i})" style="font-size:12px;color:var(--rose);background:var(--rose-pale);border:1.5px solid rgba(192,83,90,.2);border-radius:6px;padding:3px 10px;cursor:pointer">삭제</button>
+    </div>`).join('');
+}
+function addCustomSubject(){
+  const input=document.getElementById('new-subject-input');
+  const val=input.value.trim();
+  if(!val){toast('과목명을 입력해주세요','err');return;}
+  const list=getCustomSubjects();
+  if(list.includes(val)){toast('이미 있는 과목이에요','err');return;}
+  list.push(val);
+  saveCustomSubjects(list);
+  input.value='';
+  renderSubjectListUI();
+  updSubjDL();
+  toast(`"${val}" 과목 추가됨`,'ok');
+}
+function removeCustomSubject(idx){
+  const list=getCustomSubjects();
+  const name=list[idx];
+  if(!confirm(`"${name}" 과목을 삭제할까요?`))return;
+  list.splice(idx,1);
+  saveCustomSubjects(list);
+  renderSubjectListUI();
+  updSubjDL();
+  toast('과목 삭제됨');
 }
 
 /* PERSIST */
