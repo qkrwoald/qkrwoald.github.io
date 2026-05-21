@@ -289,6 +289,9 @@ button,input,select,textarea{font-family:var(--f-body)}
 .str{font-size:22px;background:none;border:none;color:var(--ink4);cursor:pointer;padding:0;line-height:1;transition:transform .1s;}
 .str.on{color:var(--gold);}
 .str:active{transform:scale(.82);}
+.str-half{font-size:20px;background:none;border:none;color:var(--ink4);cursor:pointer;padding:0 1px;line-height:1;transition:all .1s;}
+.str-half.on{color:var(--gold);}
+.str-half:active{transform:scale(.82);}
 
 /* Chips */
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;}
@@ -704,7 +707,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.5.5 · 2026-05-21
+    v2.5.6 · 2026-05-21
   </div>
 </div>
 
@@ -822,7 +825,7 @@ canvas{width:100%;display:block;}
     <div class="pg" id="pg-viz">
       <div class="sec">Max-Heap 트리 시각화</div>
       <div class="cvswrap"><canvas id="hcvs" height="220"></canvas></div>
-      <div style="font-size:10px;color:var(--ink3);text-align:center;margin-bottom:10px">점수 높을수록 우선순위 높음 | 점수 = 긴급도×W1 + 중요도×W2 + 시간보너스×W3</div>
+      <div style="font-size:10px;color:var(--ink3);text-align:center;margin-bottom:10px">점수 높을수록 우선순위 높음 | 점수 = 긴급도(0~10)×W1 + 중요도(0~10)×W2 + 소요시간순위(0~10)×W3</div>
       <div class="sec">배열 표현</div>
       <div class="harr" id="harr"></div>
       <div class="sec">HashMap 과목 집계</div>
@@ -900,7 +903,7 @@ canvas{width:100%;display:block;}
       <!-- 우선순위 가중치 -->
       <div class="sec">우선순위 가중치</div>
       <div class="set-section">
-        <div class="set-section-hd">점수 = 긴급도×W1 + 중요도×W2 + 소요시간×W3 &nbsp;(높을수록 우선)</div>
+        <div class="set-section-hd">점수 = 긴급도(0~10)×W1 + 중요도(0~10)×W2 + 소요시간순위(0~10)×W3</div>
         <div class="set-slider-row">
           <div class="set-slider-head">
             <span class="set-slider-lbl">W1 긴급도</span>
@@ -1125,7 +1128,18 @@ canvas{width:100%;display:block;}
     <div class="fld3">
       <div class="fld"><label>마감일</label><input type="date" id="f-dl"></div>
       <div class="fld"><label>소요시간(h)</label><input type="number" id="f-hr" min="0.5" max="20" step="0.5" value="2"></div>
-      <div class="fld"><label>중요도</label><div class="stars" id="stars"><button class="str on" onclick="setStar(1)">★</button><button class="str on" onclick="setStar(2)">★</button><button class="str on" onclick="setStar(3)">★</button><button class="str" onclick="setStar(4)">★</button><button class="str" onclick="setStar(5)">★</button></div></div>
+      <div class="fld"><label>중요도 <span id="star-val-label" style="color:var(--gold);font-family:var(--f-mono);font-size:12px">3.0</span></label><div class="stars" id="stars" style="gap:0px">
+<button class="str-half" data-v="0.5" onclick="setStar(0.5)" title="0.5">◐</button>
+<button class="str-half" data-v="1" onclick="setStar(1)" title="1">★</button>
+<button class="str-half" data-v="1.5" onclick="setStar(1.5)" title="1.5">◐</button>
+<button class="str-half" data-v="2" onclick="setStar(2)" title="2">★</button>
+<button class="str-half" data-v="2.5" onclick="setStar(2.5)" title="2.5">◐</button>
+<button class="str-half" data-v="3" onclick="setStar(3)" title="3">★</button>
+<button class="str-half" data-v="3.5" onclick="setStar(3.5)" title="3.5">◐</button>
+<button class="str-half" data-v="4" onclick="setStar(4)" title="4">★</button>
+<button class="str-half" data-v="4.5" onclick="setStar(4.5)" title="4.5">◐</button>
+<button class="str-half" data-v="5" onclick="setStar(5)" title="5">★</button>
+</div></div>
     </div>
     <div class="fld"><label>메모 (선택)</label><textarea id="f-memo" placeholder="추가 메모..."></textarea></div>
     <div style="display:flex;gap:8px">
@@ -1406,14 +1420,32 @@ function sc(s){if(!scmap[s]){scmap[s]=SCOLS[scidx++%SCOLS.length];}return scmap[
 ══════════════════════════════════════ */
 function calcScore(t){
   /* 점수가 높을수록 우선순위 높음 (Max-Heap 기준)
-     긴급도: 마감이 가까울수록 높음 (최대 10)
-     중요도: 입력값 그대로 — 높을수록 높음 (1~5)
-     소요시간: 길수록 높음 — 일찍 시작해야 하므로 */
-  const days=Math.max(.01,(new Date(t.deadline)-Date.now())/86400000);
-  const urgency=Math.max(0,10-days); // 마감 임박할수록 높음
-  const importance=t.importance;     // 높을수록 높음
-  const hours=t.hours;               // 소요시간 길수록 높음 (일찍 시작해야 하므로)
-  return +(urgency*S.w1+importance*S.w2+hours*S.w3).toFixed(3);
+     모든 요소를 0~10으로 정규화 후 가중합 */
+
+  // 긴급도: 마감이 가까울수록 높음 (0~10)
+  const days = t.deadline
+    ? Math.max(.01, (new Date(t.deadline) - Date.now()) / 86400000)
+    : 30; // 마감일 없으면 30일로 간주
+  const urgency = Math.max(0, Math.min(10, 10 - days));
+
+  // 중요도: 별점 0~5 → 0~10 (×2)
+  const importance = (t.importance || 0) * 2;
+
+  // 소요시간: 전체 과제(자신 포함) 중 상대적 위치 → 0~10
+  // 자신을 포함한 모든 과제 소요시간 수집
+  const allHours = [...tasks.filter(x=>!x.done).map(x=>x.hours), t.hours].filter(Boolean);
+  let hoursScore = 5; // 과제가 1개뿐이면 중간값
+  if(allHours.length > 1){
+    const minH = Math.min(...allHours);
+    const maxH = Math.max(...allHours);
+    if(maxH === minH){
+      hoursScore = 5;
+    } else {
+      hoursScore = ((t.hours - minH) / (maxH - minH)) * 10;
+    }
+  }
+
+  return +(urgency*S.w1 + importance*S.w2 + hoursScore*S.w3).toFixed(3);
 }
 function urgInfo(t){
   const days=Math.ceil((new Date(t.deadline)-new Date())/86400000);
@@ -1891,7 +1923,16 @@ function submitTask(){
     addTask(sub,nm,dl,starV,hrs,memo);closeSheet();toast('"'+nm+'" 추가됨 ✓','ok');
   }
 }
-function setStar(n){starV=n;document.querySelectorAll('.str').forEach((b,i)=>b.classList.toggle('on',i<n));updateSP();}
+function setStar(n){
+  starV = n;
+  document.querySelectorAll('.str-half').forEach(b=>{
+    const v = parseFloat(b.dataset.v);
+    b.classList.toggle('on', v <= n);
+  });
+  const lbl = document.getElementById('star-val-label');
+  if(lbl) lbl.textContent = n.toFixed(1);
+  updateSP();
+}
 function updateSP(){
   const dl=document.getElementById('f-dl')?.value,hrs=parseFloat(document.getElementById('f-hr')?.value)||2;
   if(!dl){document.getElementById('spv').textContent='—';return;}
@@ -2203,8 +2244,8 @@ function renderGmailSuggestions(){
     const subLabel = cleanedSubject
       ? `<div class="gmail-suggest-sub">${cleanedSubject}</div>` : '';
     // 별점 렌더
-    const stars = [1,2,3,4,5].map(n=>
-      `<button class="gmail-suggest-star${n<=a._star?' on':''}" onclick="gmailSuggestStar(${idx},${n})">★</button>`
+    const stars = [0.5,1,1.5,2,2.5,3,3.5,4,4.5,5].map(n=>
+      `<button class="gmail-suggest-star${n<=a._star?' on':''}" onclick="gmailSuggestStar(${idx},${n})" title="${n}">${Number.isInteger(n)?'★':'◐'}</button>`
     ).join('');
     return `<div class="gmail-suggest-card" id="gsc-${idx}">
   <div class="gmail-suggest-top">
