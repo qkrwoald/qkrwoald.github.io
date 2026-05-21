@@ -704,7 +704,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.5.0 · 2026-05-21
+    v2.5.1 · 2026-05-21
   </div>
 </div>
 
@@ -1042,6 +1042,16 @@ canvas{width:100%;display:block;}
             <div class="set-toggle-desc" id="gmail-link-desc">연동되지 않음</div>
           </div>
           <button class="tgl" id="tgl-gmail" onclick="toggleGmailLink(this)"></button>
+        </div>
+        <div style="padding:10px 0;border-bottom:1px solid var(--divider);font-size:12px;color:var(--ink3);line-height:1.6">
+          ⚠️ 무시한 과제는 이후 동기화에서 다시 표시되지 않습니다.
+        </div>
+        <div style="padding:12px 0;border-bottom:1px solid var(--divider);display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div class="set-toggle-label">무시한 과제</div>
+            <div class="set-toggle-desc" id="gmail-ignored-count">0개</div>
+          </div>
+          <button class="btn btn-line" style="font-size:12px;padding:6px 12px" onclick="resetIgnoredGmail()">초기화</button>
         </div>
         <div style="padding:12px 0">
           <button class="btn btn-line btn-w" onclick="openGmailModal(true)">🔑 앱 비밀번호 재설정</button>
@@ -1636,6 +1646,7 @@ function renderSettings(){
   document.getElementById('pname').textContent=CU.name;
   document.getElementById('puid').textContent=CU.email||('@'+CU.uid);
   updateGmailSettingsUI();
+  updateIgnoredCount();
 }
 
 let deferredPrompt=null;
@@ -1929,6 +1940,28 @@ function updateGmailSettingsUI() {
 /* Gmail 추천 과제 목록 (임시 저장) */
 let gmailSuggestions = [];
 
+// 무시한 과제 키 목록 (영구 저장) — "과목명::과제명" 형식
+function getIgnoredGmail(){ try{ return JSON.parse(localStorage.getItem('sq_gmail_ignored')||'[]'); }catch{ return []; } }
+function saveIgnoredGmail(list){ localStorage.setItem('sq_gmail_ignored', JSON.stringify(list)); }
+function isIgnored(a){ return getIgnoredGmail().includes(a.subject+'::'+a.name); }
+function addIgnored(a){
+  const list = getIgnoredGmail();
+  const key = a.subject+'::'+a.name;
+  if(!list.includes(key)) list.push(key);
+  saveIgnoredGmail(list);
+  updateIgnoredCount();
+}
+function updateIgnoredCount(){
+  const el = document.getElementById('gmail-ignored-count');
+  if(el) el.textContent = getIgnoredGmail().length + '개';
+}
+function resetIgnoredGmail(){
+  if(!confirm('무시한 과제 목록을 초기화할까요?\n다음 동기화 시 무시했던 과제들이 다시 표시됩니다.')) return;
+  saveIgnoredGmail([]);
+  updateIgnoredCount();
+  toast('무시 목록 초기화됨', 'ok');
+}
+
 async function syncGmail(){
   const btn=document.getElementById('gmail-sync-btn');
   const status=document.getElementById('gmail-status');
@@ -1965,6 +1998,8 @@ async function syncGmail(){
       const exists=tasks.some(t=>t.name===a.name&&t.subject===a.subject);
       if(exists){skipped++;continue;}
       if(a.deadline && new Date(a.deadline)<new Date(new Date().toDateString())){skipped++;continue;}
+      // 무시한 과제 제외
+      if(isIgnored(a)){skipped++;continue;}
       // 이미 추천 목록에 있는 것도 제외
       const alreadySuggested=gmailSuggestions.some(s=>s.name===a.name&&s.subject===a.subject);
       if(alreadySuggested) continue;
@@ -2044,9 +2079,11 @@ function gmailSuggestHours(idx, v){
   gmailSuggestions[idx]._hours=parseFloat(v)||1;
 }
 function gmailSuggestIgnore(idx){
+  const a=gmailSuggestions[idx];
+  addIgnored(a); // 영구 저장
   gmailSuggestions.splice(idx,1);
   renderGmailSuggestions();
-  toast('무시됨');
+  toast('무시됨 (설정에서 초기화 가능)');
 }
 function gmailSuggestAdd(idx){
   const a=gmailSuggestions[idx];
