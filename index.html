@@ -683,7 +683,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.4.0 · 2026-05-21
+    v2.4.1 · 2026-05-21
   </div>
 </div>
 
@@ -1928,18 +1928,45 @@ async function syncGmail(){
       status.textContent='최근 30일간 Classroom 과제 이메일이 없습니다.';
       btn.innerHTML='<span>📧</span><span>Gmail 동기화</span>';btn.disabled=false;return;
     }
-    let added=0,skipped=0;
+    let added=0, skipped=0, needsDeadline=[];
     for(const a of assignments){
       const exists=tasks.some(t=>t.name===a.name&&t.subject===a.subject);
       if(exists){skipped++;continue;}
-      if(new Date(a.deadline)<new Date(new Date().toDateString())){skipped++;continue;}
-      addTask(a.subject,a.name,a.deadline,a.importance||3,a.hours||2,a.memo||'');
-      added++;
+      // 마감일 있는 과제: 기한 지난 것 제외하고 바로 추가
+      if(a.deadline){
+        if(new Date(a.deadline)<new Date(new Date().toDateString())){skipped++;continue;}
+        addTask(a.subject,a.name,a.deadline,a.importance||3,a.hours||2,a.memo||'');
+        added++;
+      } else {
+        // 마감일 없는 과제: 나중에 사용자 입력 받기
+        needsDeadline.push(a);
+      }
     }
-    status.textContent=added?`✅ ${added}개 과제 추가됨${skipped?` (${skipped}개 중복/기한초과 제외)`:''}`:
-      `새로 추가된 과제가 없습니다${skipped?` (${skipped}개 이미 등록됨)`:''}`;
-    if(added>0)toast(`📧 ${added}개 과제 추가됨`,'ok');
-    else toast('새로운 과제가 없습니다');
+
+    // 마감일 없는 과제들은 시트를 통해 하나씩 입력 받기
+    if(needsDeadline.length > 0){
+      status.textContent = added > 0
+        ? `✅ ${added}개 추가됨. 마감일 미설정 과제 ${needsDeadline.length}개를 직접 입력해주세요.`
+        : `마감일 미설정 과제 ${needsDeadline.length}개를 직접 입력해주세요.`;
+      // 첫 번째 마감일 없는 과제를 시트에 미리 채워서 열기
+      for(const a of needsDeadline){
+        const confirmed = confirm(`"${a.name}" (${a.subject})\n마감일이 없는 과제입니다. 추가할까요?\n(확인 후 마감일을 직접 입력해주세요)`);
+        if(confirmed){
+          openSheet();
+          setTimeout(()=>{
+            document.getElementById('f-sub').value = a.subject==='알 수 없음'?'':a.subject;
+            document.getElementById('f-nm').value = a.name;
+            document.getElementById('f-memo').value = a.memo||'';
+            updateSP();
+          }, 400);
+          break; // 한 번에 하나씩만
+        }
+      }
+    } else {
+      status.textContent=added?`✅ ${added}개 과제 추가됨${skipped?` (${skipped}개 중복/기한초과 제외)`:''}`:`새로 추가된 과제가 없습니다${skipped?` (${skipped}개 이미 등록됨)`:''}`;
+      if(added>0)toast(`📧 ${added}개 과제 추가됨`,'ok');
+      else toast('새로운 과제가 없습니다');
+    }
   }catch(e){
     console.error('Gmail sync error:',e);
     status.textContent='❌ Worker 서버 연결 실패. 잠시 후 다시 시도해주세요.';
