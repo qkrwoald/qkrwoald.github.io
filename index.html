@@ -704,7 +704,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.5.2 · 2026-05-21
+    v2.5.3 · 2026-05-21
   </div>
 </div>
 
@@ -1097,7 +1097,16 @@ canvas{width:100%;display:block;}
     <div class="sh-title" id="sh-title">새 과제 등록</div>
     <div class="score-pill"><span class="sp-l">예상 우선순위 점수</span><span class="sp-v" id="spv">—</span></div>
     <div class="fld2">
-      <div class="fld"><label>과목명</label><input type="text" id="f-sub" placeholder="알고리즘" list="subdl"><datalist id="subdl"></datalist></div>
+      <div class="fld">
+        <label>과목명</label>
+        <select id="f-sub-select" onchange="onSubjectSelect(this.value)" style="width:100%;padding:11px 13px;background:var(--paper);border:1.5px solid var(--divider);border-radius:var(--r);color:var(--ink);font-size:14px;-webkit-appearance:none;margin-bottom:6px">
+          <option value="">— 과목 선택 —</option>
+          <option value="자료구조">자료구조</option>
+          <option value="물리학및실험2">물리학및실험2</option>
+          <option value="__direct__">직접 입력</option>
+        </select>
+        <input type="text" id="f-sub" placeholder="과목명 직접 입력" list="subdl" style="display:none"><datalist id="subdl"></datalist>
+      </div>
       <div class="fld"><label>과제명</label><input type="text" id="f-nm" placeholder="이진 탐색 구현"></div>
     </div>
     <div class="fld3">
@@ -1667,9 +1676,57 @@ function renderUndoDots(){
   const c=document.getElementById('ucnt');if(c)c.textContent=undoSt.size()+'단계';
 }
 
+// 고정 과목 리스트
+const FIXED_SUBJECTS = ['자료구조', '물리학및실험2'];
+
 function updSubjDL(){
   const dl=document.getElementById('subdl');if(!dl)return;
-  dl.innerHTML=[...new Set(tasks.map(t=>t.subject))].map(s=>`<option value="${s}">`).join('');
+  const taskSubjects=[...new Set(tasks.map(t=>t.subject).filter(Boolean))];
+  const all=[...new Set([...FIXED_SUBJECTS, ...taskSubjects])];
+  dl.innerHTML=all.map(s=>`<option value="${s}">`).join('');
+}
+
+function onSubjectSelect(val){
+  const input=document.getElementById('f-sub');
+  const select=document.getElementById('f-sub-select');
+  if(val==='__direct__'){
+    input.style.display='';
+    input.value='';
+    input.focus();
+  } else if(val){
+    input.style.display='none';
+    input.value=val;
+  } else {
+    input.style.display='none';
+    input.value='';
+  }
+  updateSP();
+}
+
+function setSubjectValue(val){
+  const select=document.getElementById('f-sub-select');
+  const input=document.getElementById('f-sub');
+  if(!val){
+    select.value='';
+    input.style.display='none';
+    input.value='';
+    return;
+  }
+  // 고정 목록에 있으면 select로, 없으면 직접입력
+  const inFixed = FIXED_SUBJECTS.includes(val);
+  if(inFixed){
+    select.value=val;
+    input.style.display='none';
+    input.value=val;
+  } else {
+    select.value='__direct__';
+    input.style.display='';
+    input.value=val;
+  }
+}
+
+function getSubjectValue(){
+  return document.getElementById('f-sub').value.trim();
 }
 
 /* AI */
@@ -1727,8 +1784,9 @@ function openSheet(){
   editingTaskId = null;
   document.getElementById('sh-title').textContent = '새 과제 등록';
   const dl=new Date();dl.setDate(dl.getDate()+7);document.getElementById('f-dl').value=dl.toISOString().slice(0,10);
+  setSubjectValue('');
   document.getElementById('ov').classList.add('open');updateSP();updSubjDL();
-  setTimeout(()=>document.getElementById('f-sub')?.focus(),350);
+  setTimeout(()=>document.getElementById('f-sub-select')?.focus(),350);
 }
 
 function editTask(id){
@@ -1736,7 +1794,7 @@ function editTask(id){
   if(!t) return;
   editingTaskId = id;
   document.getElementById('sh-title').textContent = '과제 수정';
-  document.getElementById('f-sub').value = t.subject||'';
+  setSubjectValue(t.subject||'');
   document.getElementById('f-nm').value = t.name||'';
   document.getElementById('f-dl').value = t.deadline||'';
   document.getElementById('f-hr').value = t.hours||2;
@@ -1750,11 +1808,12 @@ function closeSheet(){
   editingTaskId = null;
   document.getElementById('sh-title').textContent = '새 과제 등록';
   document.getElementById('ov').classList.remove('open');
-  document.getElementById('f-sub').value='';document.getElementById('f-nm').value='';document.getElementById('f-memo').value='';setStar(3);
+  setSubjectValue('');
+  document.getElementById('f-nm').value='';document.getElementById('f-memo').value='';setStar(3);
 }
 function closeBg(e){if(e.target===document.getElementById('ov'))closeSheet();}
 function submitTask(){
-  const sub=document.getElementById('f-sub').value.trim(),nm=document.getElementById('f-nm').value.trim();
+  const sub=getSubjectValue(),nm=document.getElementById('f-nm').value.trim();
   const dl=document.getElementById('f-dl').value,hrs=parseFloat(document.getElementById('f-hr').value)||2;
   const memo=document.getElementById('f-memo').value.trim();
   if(!sub||!nm){toast('과목명, 과제명을 입력해주세요','err');return;}
@@ -2140,29 +2199,21 @@ function cleanCourseName(s){
 
 function gmailSuggestAdd(idx){
   const a=gmailSuggestions[idx];
-  const dl=a.deadline||'';
-  if(!dl){
-    // 마감일 없으면 시트 열어서 마감일 입력받기
-    gmailSuggestions.splice(idx,1);
-    renderGmailSuggestions();
-    openSheet();
-    setTimeout(()=>{
-      document.getElementById('f-sub').value=cleanCourseName(a.subject);
-      document.getElementById('f-nm').value=a.name;
-      document.getElementById('f-memo').value=a.memo||'';
-      setStar(a._star||3);
-      document.getElementById('f-hr').value=a._hours||2;
-      updateSP();
-    },400);
-    return;
-  }
-  addTask(
-    cleanCourseName(a.subject),
-    a.name, dl, a._star||3, a._hours||2, a.memo||''
-  );
+  // 마감일 유무 상관없이 항상 시트 열어서 과목명 확인받기
+  addIgnored(a); // 등록 시에도 무시 목록에 추가 → 재동기화 시 안 뜸
   gmailSuggestions.splice(idx,1);
   renderGmailSuggestions();
-  toast(`"${a.name}" 등록됨 ✓`,'ok');
+  openSheet();
+  setTimeout(()=>{
+    const cleaned = cleanCourseName(a.subject);
+    setSubjectValue(cleaned);
+    document.getElementById('f-nm').value=a.name;
+    document.getElementById('f-dl').value=a.deadline||'';
+    document.getElementById('f-memo').value=a.memo||'';
+    setStar(a._star||3);
+    document.getElementById('f-hr').value=a._hours||2;
+    updateSP();
+  },400);
 }
 
 /* PERSIST */
