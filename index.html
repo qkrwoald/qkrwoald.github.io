@@ -704,7 +704,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.5.4 · 2026-05-21
+    v2.5.5 · 2026-05-21
   </div>
 </div>
 
@@ -1306,22 +1306,39 @@ function saveSession(s){localStorage.setItem(SK,JSON.stringify(s));}
 function clearSession(){localStorage.removeItem(SK);}
 
 async function saveUD(uid,d){
+  // localStorage에 항상 저장 (빠른 fallback)
+  try{ localStorage.setItem('sqdata_'+uid, JSON.stringify(d)); }catch(e){}
+  // Firestore에도 저장
   try{
     if(!getDB()) throw new Error('DB not ready');
-    await fsSetDoc(fsDoc(getDB(),'users',uid),d);
+    await fsSetDoc(fsDoc(getDB(),'users',uid), d);
   }catch(e){
-    localStorage.setItem('sqdata_'+uid,JSON.stringify(d));
-    console.warn('Firestore save failed:',e);
+    console.warn('Firestore save failed, localStorage backup used:', e);
   }
 }
 async function loadUD(uid){
+  // Firestore에서 로드 시도
   try{
-    if(!getDB()) throw new Error('DB not ready');
-    const snap=await fsGetDoc(fsDoc(getDB(),'users',uid));
-    if(snap.exists()) return snap.data();
+    if(getDB()){
+      const snap=await fsGetDoc(fsDoc(getDB(),'users',uid));
+      if(snap.exists()){
+        const data=snap.data();
+        // Firestore 데이터가 localStorage보다 최신인지 확인
+        const local=JSON.parse(localStorage.getItem('sqdata_'+uid)||'null');
+        // tasks 수가 더 많은 쪽 사용 (더 안전)
+        if(local && (local.tasks||[]).length > (data.tasks||[]).length){
+          console.warn('localStorage has more tasks than Firestore, using localStorage');
+          // localStorage가 더 많으면 Firestore도 업데이트
+          saveUD(uid, local);
+          return local;
+        }
+        return data;
+      }
+    }
   }catch(e){
     console.warn('Firestore load failed:',e);
   }
+  // localStorage fallback
   try{return JSON.parse(localStorage.getItem('sqdata_'+uid)||'null');}catch{return null;}
 }
 
@@ -1442,7 +1459,7 @@ function addTask(sub,nm,dl,imp,hrs,memo){
   const t={id:nid++,subject:sub,name:nm,deadline:dl,importance:imp,hours:hrs,memo,done:false,progress:0,score:0,createdAt:Date.now()};
   t.score=calcScore(t);
   undoSt.push({type:'add',task:{...t},desc:`"${nm}" 추가`});redoSt.clear();
-  tasks.push(t);markAct();rebuild();saveState();renderAll();return t;
+  tasks.push(t);markAct();rebuild();saveState();renderAll();return t; // saveState는 비동기이므로 저장 실패해도 localStorage에 백업됨
 }
 function delTask(id){
   const idx=tasks.findIndex(t=>t.id===id);if(idx<0)return;
