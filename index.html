@@ -2606,7 +2606,7 @@ function renderSchedule(){
   getScheduleDayKeys().forEach((day,di)=>{
     const classes = TIMETABLE[day]||[];
     const totalPx = (SCHOOL_END-SCHOOL_START)*slotH;
-    html += `<div style="position:relative;height:${totalPx}px;border-left:1px solid var(--divider);${di===6?'border-right:1px solid var(--divider)':\'\'}border-bottom:1px solid var(--divider)">`;
+    html += `<div style="position:relative;height:${totalPx}px;border-left:1px solid var(--divider);${di===6?'border-right:1px solid var(--divider)':''}border-bottom:1px solid var(--divider)">`;
 
     // 시간 구분선
     for(let h=SCHOOL_START;h<=SCHOOL_END;h++){
