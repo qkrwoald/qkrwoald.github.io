@@ -706,7 +706,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.0 · 2026-05-21
+    v2.6.1 · 2026-05-21
   </div>
 </div>
 
@@ -999,6 +999,13 @@ canvas{width:100%;display:block;}
             <option value="priority">우선순위</option>
             <option value="deadline">마감일</option>
             <option value="importance">중요도</option>
+          </select>
+        </div>
+        <div class="set-select-row">
+          <label>시간표 시작 기준</label>
+          <select id="st-schedmode" onchange="applyS('scheduleStartMode',this.value);if(curPg==='schedule')renderSchedule()">
+            <option value="today">오늘부터 7일</option>
+            <option value="sunday">일요일부터</option>
           </select>
         </div>
       </div>
@@ -1404,7 +1411,7 @@ let timerIv=null,timerSecs=25*60,timerTotal=25*60,timerRunning=false,timerMins=2
 let pomoC=0,pomoC2=0,focusId=null;
 const CIRC=2*Math.PI*74;
 
-let S={theme:'light',accent:'',fontSize:15,w1:.5,w2:.3,w3:.2,pomoDur:25,breakDur:5,vibrate:true,showAI:true,showScore:true,showDone:true,defaultSort:'priority',alarmOn:true,alarm1day:true,alarm3h:true,alarm1h:true,gmailLinked:false,gmailPwEnc:'',gmailSkipped:false};
+let S={theme:'light',accent:'',fontSize:15,w1:.5,w2:.3,w3:.2,pomoDur:25,breakDur:5,vibrate:true,showAI:true,showScore:true,showDone:true,defaultSort:'priority',alarmOn:true,alarm1day:true,alarm3h:true,alarm1h:true,gmailLinked:false,gmailPwEnc:'',gmailSkipped:false,scheduleStartMode:'today'};
 
 const SCOLS=['#5B7B5A','#4A6580','#B8932A','#C0535A','#7B6FA0','#2D8F76','#A07040'];
 let scmap={},scidx=0;
@@ -1860,6 +1867,7 @@ function applyTheme(){
   document.querySelectorAll('.set-accent-dot').forEach(s=>s.classList.toggle('on',s.dataset.a===S.accent));
   if(S.accent)document.documentElement.dataset.accent=S.accent;else delete document.documentElement.dataset.accent;
   const ds=document.getElementById('st-dsort');if(ds)ds.value=S.defaultSort||'priority';
+  const sm=document.getElementById('st-schedmode');if(sm)sm.value=S.scheduleStartMode||'today';
 }
 
 /* SHEET */
@@ -2466,6 +2474,7 @@ async function initApp(session){
 
 // 임시 시간표 데이터 (나중에 KSAIN API로 교체)
 const TIMETABLE = {
+  sun: [],
   mon: [
     {name:'자료구조', room:'공학관 201', start:'09:00', end:'10:30', color:'#4A6580'},
     {name:'물리학및실험2', room:'과학관 B01', start:'13:00', end:'15:00', color:'#5B7B5A'},
@@ -2488,23 +2497,49 @@ const TIMETABLE = {
     {name:'자료구조', room:'공학관 201', start:'10:00', end:'11:30', color:'#4A6580'},
     {name:'물리학및실험2', room:'과학관 B01', start:'13:00', end:'14:30', color:'#5B7B5A'},
   ],
+  sat: [],
 };
 
-const DAY_LABELS = {mon:'월',tue:'화',wed:'수',thu:'목',fri:'금'};
-const DAY_KEYS = ['mon','tue','wed','thu','fri'];
+const DAY_LABELS = {sun:'일',mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토'};
+const ALL_DAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
 const SCHOOL_START = 8;  // 08:00
 const SCHOOL_END = 22;   // 22:00
 
 let scheduleOffset = 0; // 0 = 이번 주
 
-function getWeekDates(offset){
+function getScheduleDayKeys(){
+  // scheduleStartMode: 'today' = 오늘부터 7일, 'sunday' = 일요일부터 7일
+  const mode = S.scheduleStartMode || 'today';
   const today = new Date();
-  const dow = today.getDay(); // 0=일
-  const mon = new Date(today);
-  mon.setDate(today.getDate() - (dow===0?6:dow-1) + offset*7);
-  return DAY_KEYS.map((_,i)=>{
-    const d = new Date(mon);
-    d.setDate(mon.getDate()+i);
+  const todayDow = today.getDay(); // 0=일,1=월,...,6=토
+  if(mode==='sunday'){
+    // 항상 일월화수목금토
+    return ALL_DAY_KEYS; // ['sun','mon','tue','wed','thu','fri','sat']
+  } else {
+    // 오늘부터 7일
+    const rotated = [];
+    for(let i=0;i<7;i++){
+      rotated.push(ALL_DAY_KEYS[(todayDow+i)%7]);
+    }
+    return rotated;
+  }
+}
+
+function getWeekDates(offset){
+  const mode = S.scheduleStartMode || 'today';
+  const today = new Date();
+  const todayDow = today.getDay();
+  let startDate = new Date(today);
+  if(mode==='sunday'){
+    // 이번 주 일요일
+    startDate.setDate(today.getDate() - todayDow + offset*7);
+  } else {
+    // 오늘부터
+    startDate.setDate(today.getDate() + offset*7);
+  }
+  return getScheduleDayKeys().map((_,i)=>{
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate()+i);
     return d;
   });
 }
@@ -2539,20 +2574,22 @@ function renderSchedule(){
   const slotH = 48; // px per hour
 
   // 시간 레이블 + 요일 헤더
-  let html = `<div style="display:grid;grid-template-columns:36px repeat(5,1fr);gap:0;min-width:300px">`;
+  let html = `<div style="display:grid;grid-template-columns:36px repeat(7,1fr);gap:0;min-width:300px">`;
 
   // 요일 헤더
   html += `<div style="height:36px"></div>`;
+  const dayKeys=getScheduleDayKeys();
   dates.forEach((d,i)=>{
     const isToday = d.toISOString().slice(0,10)===todayStr;
+    const isWeekend = d.getDay()===0||d.getDay()===6;
     html += `<div style="height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-      background:${isToday?'var(--terracotta)':'var(--paper2)'};
-      color:${isToday?'#fff':'var(--ink3)'};
+      background:${isToday?'var(--terracotta)':isWeekend?'var(--paper3)':'var(--paper2)'};
+      color:${isToday?'#fff':isWeekend?'var(--rose)':'var(--ink3)'};
       font-size:11px;font-weight:600;border-bottom:1px solid var(--divider);
       border-left:1px solid var(--divider);border-top:1px solid var(--divider);
-      ${i===4?'border-right:1px solid var(--divider)':''}
-      border-radius:${i===0?'var(--r-sm) 0 0 0':''}${i===4?'0 var(--r-sm) 0 0':''}">
-      <span>${DAY_LABELS[DAY_KEYS[i]]}</span>
+      ${i===6?'border-right:1px solid var(--divider)':''}
+      border-radius:${i===0?'var(--r-sm) 0 0 0':''}${i===6?'0 var(--r-sm) 0 0':''}">
+      <span>${DAY_LABELS[dayKeys[i]]}</span>
       <span style="font-size:10px;opacity:.8">${d.getDate()}</span>
     </div>`;
   });
@@ -2566,10 +2603,10 @@ function renderSchedule(){
   html += `</div>`;
 
   // 각 요일 컬럼
-  DAY_KEYS.forEach((day,di)=>{
+  getScheduleDayKeys().forEach((day,di)=>{
     const classes = TIMETABLE[day]||[];
     const totalPx = (SCHOOL_END-SCHOOL_START)*slotH;
-    html += `<div style="position:relative;height:${totalPx}px;border-left:1px solid var(--divider);${di===4?'border-right:1px solid var(--divider)':''}border-bottom:1px solid var(--divider)">`;
+    html += `<div style="position:relative;height:${totalPx}px;border-left:1px solid var(--divider);${di===6?'border-right:1px solid var(--divider)':\'\'}border-bottom:1px solid var(--divider)">`;
 
     // 시간 구분선
     for(let h=SCHOOL_START;h<=SCHOOL_END;h++){
