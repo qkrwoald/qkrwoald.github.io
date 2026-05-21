@@ -289,9 +289,8 @@ button,input,select,textarea{font-family:var(--f-body)}
 .str{font-size:22px;background:none;border:none;color:var(--ink4);cursor:pointer;padding:0;line-height:1;transition:transform .1s;}
 .str.on{color:var(--gold);}
 .str:active{transform:scale(.82);}
-.str-half{font-size:20px;background:none;border:none;color:var(--ink4);cursor:pointer;padding:0 1px;line-height:1;transition:all .1s;}
-.str-half.on{color:var(--gold);}
-.str-half:active{transform:scale(.82);}
+.star-svg-btn{background:none;border:none;padding:0;cursor:pointer;display:inline-block;vertical-align:middle;}
+.star-svg-btn:active{transform:scale(.88);}
 
 /* Chips */
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;}
@@ -707,7 +706,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.5.6 · 2026-05-21
+    v2.5.7 · 2026-05-21
   </div>
 </div>
 
@@ -1128,18 +1127,7 @@ canvas{width:100%;display:block;}
     <div class="fld3">
       <div class="fld"><label>마감일</label><input type="date" id="f-dl"></div>
       <div class="fld"><label>소요시간(h)</label><input type="number" id="f-hr" min="0.5" max="20" step="0.5" value="2"></div>
-      <div class="fld"><label>중요도 <span id="star-val-label" style="color:var(--gold);font-family:var(--f-mono);font-size:12px">3.0</span></label><div class="stars" id="stars" style="gap:0px">
-<button class="str-half" data-v="0.5" onclick="setStar(0.5)" title="0.5">◐</button>
-<button class="str-half" data-v="1" onclick="setStar(1)" title="1">★</button>
-<button class="str-half" data-v="1.5" onclick="setStar(1.5)" title="1.5">◐</button>
-<button class="str-half" data-v="2" onclick="setStar(2)" title="2">★</button>
-<button class="str-half" data-v="2.5" onclick="setStar(2.5)" title="2.5">◐</button>
-<button class="str-half" data-v="3" onclick="setStar(3)" title="3">★</button>
-<button class="str-half" data-v="3.5" onclick="setStar(3.5)" title="3.5">◐</button>
-<button class="str-half" data-v="4" onclick="setStar(4)" title="4">★</button>
-<button class="str-half" data-v="4.5" onclick="setStar(4.5)" title="4.5">◐</button>
-<button class="str-half" data-v="5" onclick="setStar(5)" title="5">★</button>
-</div></div>
+      <div class="fld"><label>중요도 <span id="star-val-label" style="color:var(--gold);font-family:var(--f-mono);font-size:12px">3.0</span></label><div id="stars" style="display:flex;gap:0;margin-top:4px"></div></div>
     </div>
     <div class="fld"><label>메모 (선택)</label><textarea id="f-memo" placeholder="추가 메모..."></textarea></div>
     <div style="display:flex;gap:8px">
@@ -1923,14 +1911,51 @@ function submitTask(){
     addTask(sub,nm,dl,starV,hrs,memo);closeSheet();toast('"'+nm+'" 추가됨 ✓','ok');
   }
 }
+function renderStarSVG(containerId, val, onClickFn){
+  const container = document.getElementById(containerId);
+  if(!container) return;
+  container.innerHTML='';
+  const gold='#B8932A', gray='#C8C0B8';
+  const pts='16,3 20.5,12 31,13.5 23.5,20.5 25.5,31 16,26 6.5,31 8.5,20.5 1,13.5 11.5,12';
+  for(let i=1;i<=5;i++){
+    const ns='http://www.w3.org/2000/svg';
+    const svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('width','30');svg.setAttribute('height','30');svg.setAttribute('viewBox','0 0 32 32');
+    svg.style.cssText='cursor:pointer;flex-shrink:0';
+    if(val>=i){
+      const s=document.createElementNS(ns,'polygon');
+      s.setAttribute('points',pts);s.setAttribute('fill',gold);svg.appendChild(s);
+    } else if(val>=i-0.5){
+      const defs=document.createElementNS(ns,'defs');
+      const clip=document.createElementNS(ns,'clipPath');
+      clip.setAttribute('id',containerId+'h'+i);
+      const r=document.createElementNS(ns,'rect');
+      r.setAttribute('x','0');r.setAttribute('y','0');r.setAttribute('width','16');r.setAttribute('height','32');
+      clip.appendChild(r);defs.appendChild(clip);svg.appendChild(defs);
+      const bg=document.createElementNS(ns,'polygon');
+      bg.setAttribute('points',pts);bg.setAttribute('fill',gray);svg.appendChild(bg);
+      const fg=document.createElementNS(ns,'polygon');
+      fg.setAttribute('points',pts);fg.setAttribute('fill',gold);
+      fg.setAttribute('clip-path','url(#'+containerId+'h'+i+')');svg.appendChild(fg);
+    } else {
+      const s=document.createElementNS(ns,'polygon');
+      s.setAttribute('points',pts);s.setAttribute('fill',gray);svg.appendChild(s);
+    }
+    const idx=i;
+    svg.addEventListener('click',e=>{
+      const r=svg.getBoundingClientRect();
+      const v=(e.clientX-r.left)<r.width/2 ? idx-0.5 : idx;
+      onClickFn(Math.max(0.5,v));
+    });
+    container.appendChild(svg);
+  }
+}
+
 function setStar(n){
-  starV = n;
-  document.querySelectorAll('.str-half').forEach(b=>{
-    const v = parseFloat(b.dataset.v);
-    b.classList.toggle('on', v <= n);
-  });
-  const lbl = document.getElementById('star-val-label');
-  if(lbl) lbl.textContent = n.toFixed(1);
+  starV=n;
+  renderStarSVG('stars', n, (v)=>setStar(v));
+  const lbl=document.getElementById('star-val-label');
+  if(lbl) lbl.textContent=n.toFixed(1);
   updateSP();
 }
 function updateSP(){
@@ -2236,6 +2261,12 @@ function renderGmailSuggestions(){
   }
   section.style.display='block';
   count.textContent=`${gmailSuggestions.length}개`;
+  setTimeout(()=>{
+    gmailSuggestions.forEach((a,idx)=>{
+      const handler=(v)=>{ gmailSuggestions[idx]._star=v; renderStarSVG('gstar-'+idx,v,handler); };
+      renderStarSVG('gstar-'+idx, a._star||3, handler);
+    });
+  },0);
   list.innerHTML=gmailSuggestions.map((a,idx)=>{
     const dlLabel = a.deadline
       ? `<span class="gmail-suggest-dl" style="color:var(--terracotta)">${a.deadline}</span>`
@@ -2244,9 +2275,7 @@ function renderGmailSuggestions(){
     const subLabel = cleanedSubject
       ? `<div class="gmail-suggest-sub">${cleanedSubject}</div>` : '';
     // 별점 렌더
-    const stars = [0.5,1,1.5,2,2.5,3,3.5,4,4.5,5].map(n=>
-      `<button class="gmail-suggest-star${n<=a._star?' on':''}" onclick="gmailSuggestStar(${idx},${n})" title="${n}">${Number.isInteger(n)?'★':'◐'}</button>`
-    ).join('');
+    const stars = `<div id='gstar-${idx}' style='display:flex;gap:0'></div>`;
     return `<div class="gmail-suggest-card" id="gsc-${idx}">
   <div class="gmail-suggest-top">
     <div class="gmail-suggest-info">
@@ -2258,7 +2287,7 @@ function renderGmailSuggestions(){
   <div class="gmail-suggest-controls">
     <div class="gmail-suggest-ctrl-row">
       <span class="gmail-suggest-ctrl-label">중요도</span>
-      <div class="gmail-suggest-stars">${stars}</div>
+      <div>${stars}</div>
     </div>
     <div class="gmail-suggest-ctrl-row">
       <span class="gmail-suggest-ctrl-label">소요시간</span>
@@ -2276,7 +2305,11 @@ function renderGmailSuggestions(){
 
 function gmailSuggestStar(idx, n){
   gmailSuggestions[idx]._star=n;
-  renderGmailSuggestions();
+  const handler=(v)=>{
+    gmailSuggestions[idx]._star=v;
+    renderStarSVG('gstar-'+idx, v, handler);
+  };
+  renderStarSVG('gstar-'+idx, n, handler);
 }
 function gmailSuggestHours(idx, v){
   gmailSuggestions[idx]._hours=parseFloat(v)||1;
