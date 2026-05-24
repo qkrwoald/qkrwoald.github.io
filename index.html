@@ -123,6 +123,9 @@ button,input,select,textarea{font-family:var(--f-body)}
 }
 .auth-brand-sub{font-size:13px;color:var(--ink3);margin-top:5px;}
 
+#login-form-area .fld{margin-bottom:14px}
+#login-form-area .fld label{color:var(--ink2);font-size:12px}
+#login-form-area .fld input{background:var(--paper);padding:13px 14px;font-size:15px}
 .auth-box{
   width:100%;max-width:360px;
   background:var(--paper2);border-radius:var(--r-xl);
@@ -731,36 +734,37 @@ canvas{width:100%;display:block;}
 </head>
 <body>
 
-<!-- Google Identity Services -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-
 <!-- AUTH -->
 <div id="auth-screen">
   <div class="auth-brand">
     <div class="auth-brand-mark">✦</div>
     <div class="auth-brand-name">KSATUDY</div>
-    <div class="auth-brand-sub">우선순위 큐 기반 스마트 학습 플래너</div>
+    <div class="auth-brand-sub">KSA 학생 전용 스마트 학습 플래너</div>
   </div>
   <div class="auth-box">
     <div id="aerr" class="a-err"></div>
     <div class="auth-loading" id="auth-loading">🔄 로그인 중...</div>
-    <button class="google-btn" id="google-btn" onclick="doGoogleLogin()">
-      <svg width="20" height="20" viewBox="0 0 48 48">
-        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.29-8.16 2.29-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-        <path fill="none" d="M0 0h48v48H0z"/>
-      </svg>
-      학교 Google 계정으로 로그인
-    </button>
+    <div id="login-form-area">
+      <div class="fld">
+        <label>학교 ID (KSAIN)</label>
+        <input type="text" id="login-uid" placeholder="예: jmxnt" autocomplete="username" autocapitalize="off">
+      </div>
+      <div class="fld">
+        <label>비밀번호</label>
+        <input type="password" id="login-pw" placeholder="KSAIN 비밀번호" autocomplete="current-password"
+          onkeydown="if(event.key==='Enter')doKsainLogin()">
+      </div>
+      <button class="btn btn-main btn-w" onclick="doKsainLogin()" style="padding:13px;font-size:15px;margin-top:6px">
+        로그인
+      </button>
+    </div>
     <div class="auth-notice">
-      <strong>@ksa.hs.kr</strong> 계정만 로그인할 수 있습니다.<br>
-      다른 구글 계정은 사용할 수 없습니다.
+      KSAIN에서 사용하는 학교 ID와 비밀번호로 로그인하세요.<br>
+      <span style="font-size:11px;color:var(--ink4)">학번이 아닌 학교 시스템 ID입니다.</span>
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.17 · 2026-05-24
+    v2.7.0 · 2026-05-24
   </div>
 </div>
 
@@ -1106,6 +1110,18 @@ canvas{width:100%;display:block;}
       </div>
 
 
+      <!-- 시간표 동기화 -->
+      <div class="sec">시간표 동기화</div>
+      <div class="set-section">
+        <div class="set-section-hd">KSAIN에서 시간표 자동 가져오기</div>
+        <div style="padding:12px 0;border-bottom:1px solid var(--divider);font-size:13px;color:var(--ink2);line-height:1.6">
+          로그인 시 자동으로 시간표를 가져옵니다.
+        </div>
+        <div style="padding:12px 0">
+          <button class="btn btn-line btn-w" onclick="syncKsainTimetable()">🔄 시간표 새로 가져오기</button>
+        </div>
+      </div>
+
       <!-- Classroom 연동 -->
       <div class="sec">Classroom 연동</div>
       <div class="set-section">
@@ -1370,11 +1386,10 @@ function fsSetDoc(...a){return window._fsSetDoc(...a);}
 function fsGetDoc(...a){return window._fsGetDoc(...a);}
 
 /* ══════════════════════════════════════
-   AUTH  — Google OAuth (ksa.hs.kr only)
+   AUTH  — KSAIN
 ══════════════════════════════════════ */
-const GOOGLE_CLIENT_ID='251399209464-s7memocmivrapsj0egdfedauj14b6gb6.apps.googleusercontent.com';
-const ALLOWED_DOMAIN='ksa.hs.kr';
-const SK='sqsession';
+const KSAIN_BASE = 'https://api.ksain.kr';
+const SK = 'sqsession';
 function getSession(){try{return JSON.parse(localStorage.getItem(SK)||'null');}catch{return null;}}
 function saveSession(s){localStorage.setItem(SK,JSON.stringify(s));}
 function clearSession(){localStorage.removeItem(SK);}
@@ -1418,44 +1433,53 @@ async function loadUD(uid){
 
 function showErr(m){const e=document.getElementById('aerr');e.textContent=m;e.style.display='block';}
 
-function doGoogleLogin(){
-  const btn=document.getElementById('google-btn');
+async function doKsainLogin(){
+  const formArea=document.getElementById('login-form-area');
   const loading=document.getElementById('auth-loading');
-  btn.style.display='none'; loading.style.display='block';
+  const uidInput=document.getElementById('login-uid');
+  const pwInput=document.getElementById('login-pw');
+  const uid=uidInput.value.trim();
+  const pw=pwInput.value;
+  if(!uid||!pw){showErr('학교 ID와 비밀번호를 모두 입력해주세요.');return;}
   document.getElementById('aerr').style.display='none';
-  const client=google.accounts.oauth2.initTokenClient({
-    client_id:GOOGLE_CLIENT_ID,
-    scope:'openid email profile',
-    hd:ALLOWED_DOMAIN,
-    callback:async(tokenResp)=>{
-      if(tokenResp.error){
-        btn.style.display='flex';loading.style.display='none';
-        showErr('로그인에 실패했습니다. 다시 시도해주세요.');return;
-      }
-      try{
-        const res=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+tokenResp.access_token}});
-        const info=await res.json();
-        if(!info.email||!info.email.endsWith('@'+ALLOWED_DOMAIN)){
-          btn.style.display='flex';loading.style.display='none';
-          showErr('@'+ALLOWED_DOMAIN+' 계정만 사용할 수 있습니다.');return;
-        }
-        const s={uid:info.sub,name:info.name||info.email.split('@')[0],email:info.email,picture:info.picture||'',accessToken:tokenResp.access_token};
-        saveSession(s);initApp(s);
-      }catch(e){
-        btn.style.display='flex';loading.style.display='none';
-        showErr('사용자 정보를 가져오지 못했습니다.');
-      }
+  formArea.style.display='none';
+  loading.style.display='block';
+  try{
+    const res=await fetch(KSAIN_BASE+'/auth/signin',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({uid,password:pw})
+    });
+    const data=await res.json();
+    if(!data.success||!data.data?.token){
+      formArea.style.display='block';loading.style.display='none';
+      pwInput.value='';
+      showErr(data.error==='Invalid credentials'?'학교 ID 또는 비밀번호가 틀렸습니다.':'로그인 실패: '+(data.error||'알 수 없는 오류'));
+      return;
     }
-  });
-  client.requestAccessToken();
+    const u=data.data.user;
+    const s={
+      uid:u.uid,
+      name:u.name||uid,
+      email:(u.uid||uid)+'@ksa.hs.kr', // 학번 기반 이메일 추정
+      ksainId:uid,
+      ksainToken:data.data.token,
+      groups:u.groups||[]
+    };
+    saveSession(s);
+    pwInput.value='';
+    initApp(s);
+  }catch(e){
+    formArea.style.display='block';loading.style.display='none';
+    showErr('네트워크 오류: '+e.message);
+  }
 }
 
 function doLogout(){
   if(!confirm('로그아웃 하시겠습니까?'))return;
   saveState();
-  const s=getSession();
-  if(s&&s.accessToken) google.accounts.oauth2.revoke(s.accessToken,()=>{});
-  clearSession();location.reload();
+  clearSession();
+  location.reload();
 }
 
 /* ══════════════════════════════════════
@@ -2505,6 +2529,7 @@ async function initApp(session){
   CU=session;
   document.getElementById('auth-screen').style.display='none';
   document.getElementById('app').style.display='block';
+  loadTimetableFromStorage();
   const pill=document.getElementById('user-pill');
   if(session.picture){
     pill.innerHTML=`<img src="${session.picture}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
@@ -2524,39 +2549,123 @@ async function initApp(session){
   }
   // 알람 시스템 시작
   setTimeout(startAlarmSystem, 1000);
+  // KSAIN 시간표 자동 동기화 (백그라운드)
+  setTimeout(syncKsainTimetable, 1500);
 }
 
 /* ══════════════════════════════════════
    SCHEDULE — 시간표
 ══════════════════════════════════════ */
 
-// 임시 시간표 데이터 (나중에 KSAIN API로 교체)
-const TIMETABLE = {
-  sun: [],
-  mon: [
-    {name:'자료구조', room:'공학관 201', start:'09:00', end:'10:30', color:'#4A6580'},
-    {name:'물리학및실험2', room:'과학관 B01', start:'13:00', end:'15:00', color:'#5B7B5A'},
-    {name:'영어III', room:'인문관 302', start:'15:30', end:'17:00', color:'#B8932A'},
-  ],
-  tue: [
-    {name:'물리학및실험2', room:'과학관 B01 (실험)', start:'10:00', end:'12:00', color:'#5B7B5A'},
-    {name:'수학', room:'수리관 101', start:'14:00', end:'15:30', color:'#C0535A'},
-  ],
-  wed: [
-    {name:'자료구조', room:'공학관 201', start:'09:00', end:'10:30', color:'#4A6580'},
-    {name:'일반지구과학', room:'과학관 201', start:'11:00', end:'12:30', color:'#7B6FA0'},
-    {name:'수학', room:'수리관 101', start:'14:00', end:'15:30', color:'#C0535A'},
-  ],
-  thu: [
-    {name:'영어III', room:'인문관 302', start:'09:00', end:'10:30', color:'#B8932A'},
-    {name:'일반지구과학', room:'과학관 201', start:'13:00', end:'14:30', color:'#7B6FA0'},
-  ],
-  fri: [
-    {name:'자료구조', room:'공학관 201', start:'10:00', end:'11:30', color:'#4A6580'},
-    {name:'물리학및실험2', room:'과학관 B01', start:'13:00', end:'14:30', color:'#5B7B5A'},
-  ],
-  sat: [],
+// KSA 교시별 시간 매핑
+const PERIOD_TIMES = {
+  1:  ['08:40','09:30'],
+  2:  ['09:40','10:30'],
+  3:  ['10:40','11:30'],
+  4:  ['11:40','12:30'],
+  5:  ['13:40','14:30'],
+  6:  ['14:40','15:30'],
+  7:  ['15:40','16:30'],
+  8:  ['16:40','17:30'],
+  9:  ['17:40','18:30'],
+  10: ['19:30','20:20'],
+  11: ['20:30','21:20'],
 };
+
+// 영어 day → 내부 키
+const DAY_MAP = {Mon:'mon', Tue:'tue', Wed:'wed', Thu:'thu', Fri:'fri', Sat:'sat', Sun:'sun'};
+
+// KSAIN에서 받은 시간표 (저장된 데이터 또는 빈 객체)
+let TIMETABLE = {sun:[], mon:[], tue:[], wed:[], thu:[], fri:[], sat:[]};
+
+// localStorage에서 로드
+function loadTimetableFromStorage(){
+  try{
+    const saved = localStorage.getItem('sq_timetable');
+    if(saved) TIMETABLE = JSON.parse(saved);
+  }catch(e){ console.warn('Timetable load failed:', e); }
+}
+function saveTimetableToStorage(){
+  try{ localStorage.setItem('sq_timetable', JSON.stringify(TIMETABLE)); }catch(e){}
+}
+
+// KSAIN 시간표 데이터를 우리 형식으로 변환
+function convertKsainTimetable(items){
+  const result = {sun:[], mon:[], tue:[], wed:[], thu:[], fri:[], sat:[]};
+  // 같은 수업의 연속된 교시 합치기 위해 그룹화
+  // 키: day + code + classSection
+  const grouped = {};
+  for(const it of items){
+    const dayKey = DAY_MAP[it.day];
+    if(!dayKey) continue;
+    const period = parseInt(it.period);
+    if(isNaN(period)||!PERIOD_TIMES[period]) continue;
+    const groupKey = `${dayKey}_${it.code}_${it.classSection}`;
+    if(!grouped[groupKey]){
+      grouped[groupKey] = {
+        dayKey, code:it.code, name:it.courseName, engName:it.courseEngName,
+        room:it.classroom, teacher:it.teacher,
+        periods:[period]
+      };
+    } else {
+      grouped[groupKey].periods.push(period);
+    }
+  }
+  // 연속된 교시는 한 블록으로
+  for(const g of Object.values(grouped)){
+    g.periods.sort((a,b)=>a-b);
+    let curStart = g.periods[0], curEnd = g.periods[0];
+    const ranges = [];
+    for(let i=1;i<g.periods.length;i++){
+      if(g.periods[i] === curEnd+1){
+        curEnd = g.periods[i];
+      } else {
+        ranges.push([curStart,curEnd]);
+        curStart = g.periods[i]; curEnd = g.periods[i];
+      }
+    }
+    ranges.push([curStart,curEnd]);
+    // 각 range를 블록으로 추가
+    const color = sc(g.name); // 과목 색상
+    for(const [ps,pe] of ranges){
+      result[g.dayKey].push({
+        name: g.name,
+        room: g.room,
+        teacher: g.teacher,
+        start: PERIOD_TIMES[ps][0],
+        end:   PERIOD_TIMES[pe][1],
+        color: color,
+      });
+    }
+  }
+  return result;
+}
+
+// KSAIN에서 시간표 가져오기
+async function syncKsainTimetable(){
+  if(!CU?.ksainToken){ toast('KSAIN 로그인이 필요합니다','err'); return; }
+  try{
+    const res = await fetch(KSAIN_BASE+'/profile/timetable', {
+      headers: {'Authorization':'Bearer '+CU.ksainToken}
+    });
+    const data = await res.json();
+    if(!data.success){
+      if(res.status===401||res.status===403){
+        toast('세션이 만료되었습니다. 다시 로그인해주세요.','err');
+        return;
+      }
+      toast('시간표 가져오기 실패: '+(data.error||'알 수 없는 오류'),'err');
+      return;
+    }
+    TIMETABLE = convertKsainTimetable(data.timetable||[]);
+    saveTimetableToStorage();
+    if(curPg==='schedule') renderSchedule();
+    toast('시간표 동기화 완료 ✓','ok');
+  }catch(e){
+    console.error('Timetable sync error:',e);
+    toast('네트워크 오류','err');
+  }
+}
 
 const DAY_LABELS = {sun:'일',mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토'};
 const ALL_DAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
