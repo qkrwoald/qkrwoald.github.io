@@ -740,7 +740,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.5 · 2026-05-23
+    v2.6.6 · 2026-05-23
   </div>
 </div>
 
@@ -2675,7 +2675,7 @@ function renderSchedule(){
       const slotMin = s*30;
       const top2 = slotMin/60*slotH;
       html+=`<div
-        style="position:absolute;top:${top2}px;left:0;right:0;height:${slotH/2}px;z-index:1;box-sizing:border-box;"
+        style="position:absolute;top:${top2}px;left:0;right:0;height:${slotH/2}px;z-index:4;box-sizing:border-box;"
         data-slot="1" data-day="${day}" data-slotmin="${SCHOOL_START*60+slotMin}" data-datestr="${dateStr2}"
         ondragover="onSlotDragOver(event)"
         ondragleave="onSlotDragLeave(event)"
@@ -2853,7 +2853,6 @@ function onChipDragStart(e, taskId){
   e.dataTransfer.effectAllowed='copy';
   e.dataTransfer.setData('text/plain', String(taskId));
   document.getElementById('chip-'+taskId)?.classList.add('dragging');
-  document.querySelectorAll('[data-slot]').forEach(s=>{s.style.zIndex='10';});
 }
 
 // 배치된 블록 드래그 시작
@@ -2865,17 +2864,22 @@ function onBlockDragStart(e, key){
   blockDragMoved=false;
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain', key);
-  e.currentTarget.style.opacity='0.4';
-  // 드롭 슬롯을 블록 위로 올려서 드롭 이벤트가 잡히게
-  document.querySelectorAll('[data-slot]').forEach(s=>{s.style.zIndex='10';});
+  // dragstart 직후(다음 프레임) 블록 숨기기 — 이렇게 해야 드래그 이미지가 정상 생성됨
+  const el=e.currentTarget;
+  setTimeout(()=>{
+    el.style.visibility='hidden';
+    el.style.pointerEvents='none';
+  }, 0);
 }
 function onBlockDragEnd(e){
-  e.currentTarget.style.opacity='';
+  // 블록 복원
+  document.querySelectorAll('.sched-task-block').forEach(el=>{
+    el.style.visibility='';
+    el.style.pointerEvents='';
+  });
   removeDragPreview();
-  dragBlockKey=null;
   if(!blockDragMoved) dragTaskId=null;
-  // 드롭 슬롯 z-index 원복
-  document.querySelectorAll('[data-slot]').forEach(s=>{s.style.zIndex='';});
+  dragBlockKey=null;
 }
 function onBlockClick(e, key){
   if(blockDragMoved){ blockDragMoved=false; return; }
@@ -2885,7 +2889,6 @@ function onChipDragEnd(e){
   document.getElementById('chip-'+dragTaskId)?.classList.remove('dragging');
   dragTaskId=null;
   removeDragPreview();
-  document.querySelectorAll('[data-slot]').forEach(s=>{s.style.zIndex='';});
 }
 
 function onSlotDragOver(e){
