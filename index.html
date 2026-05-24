@@ -657,6 +657,8 @@ canvas{width:100%;display:block;}
   );
   z-index:3;
   transition:filter .15s,box-shadow .15s;
+  user-select:none;-webkit-user-select:none;
+  touch-action:none;-webkit-touch-callout:none;
 }
 .sched-task-block:hover{box-shadow:var(--shadow-sm);}
 .sched-task-block:active{filter:brightness(.92);cursor:grabbing;}
@@ -740,7 +742,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.9 · 2026-05-24
+    v2.6.10 · 2026-05-24
   </div>
 </div>
 
@@ -855,7 +857,7 @@ canvas{width:100%;display:block;}
     </div>
 
     <!-- VIZ -->
-    <div class="pg" id="pg-schedule" style="margin-left:-16px;margin-right:-20px;padding:0 2px 0 4px">
+    <div class="pg" id="pg-schedule">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <div class="sec" style="margin:0">주간 시간표</div>
         <div style="display:flex;gap:6px;align-items:center">
@@ -2609,10 +2611,10 @@ function renderSchedule(){
   const slotH = 32; // px per hour
 
   // 시간 레이블 + 요일 헤더
-  let html = `<div style="display:grid;grid-template-columns:22px repeat(7,1fr);gap:0;width:100%;table-layout:fixed">`;
+  let html = `<div style="display:grid;grid-template-columns:20px repeat(7,minmax(0,1fr));gap:0;width:100%;table-layout:fixed">`;
 
   // 요일 헤더
-  html += `<div style="height:36px;width:22px"></div>`;
+  html += `<div style="height:36px;width:20px"></div>`;
   const dayKeys=getScheduleDayKeys();
   dates.forEach((d,i)=>{
     const isToday = d.toISOString().slice(0,10)===todayStr;
@@ -2630,7 +2632,7 @@ function renderSchedule(){
   });
 
   // 시간 그리드
-  html += `<div style="position:relative;grid-column:1;grid-row:2;width:22px">`;
+  html += `<div style="position:relative;grid-column:1;grid-row:2;width:20px">`;
   for(let h=SCHOOL_START;h<=SCHOOL_END;h++){
     const top = (h-SCHOOL_START)*slotH;
     html += `<div style="position:absolute;top:${top}px;left:0;right:0;font-size:9px;color:var(--ink4);font-family:var(--f-mono);text-align:right;padding-right:4px;line-height:1">${String(h).padStart(2,'0')}</div>`;
@@ -2717,7 +2719,7 @@ function renderSchedule(){
       if(gridEl){
         const top2 = nowMin/60*slotH + 36; // 36px = 헤더 높이
         const line = document.createElement('div');
-        line.style.cssText = `position:absolute;top:${top2}px;left:22px;right:0;
+        line.style.cssText = `position:absolute;top:${top2}px;left:20px;right:0;
           border-top:2px solid var(--terracotta);z-index:6;pointer-events:none`;
         const dot = document.createElement('div');
         dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:var(--terracotta);
@@ -2737,32 +2739,44 @@ function renderSchedule(){
     // PC: drag & drop
     el.addEventListener('dragstart', e=>{ onBlockDragStart(e, key); });
     el.addEventListener('dragend',   e=>{ onBlockDragEnd(e); });
+    el.addEventListener('click',     e=>{ onBlockClick(e, key); });
 
-    // 클릭 삭제 (터치와 구분)
-    let touchMoved = false;
-    let touchTimer = null;
+    // 모바일 터치
+    let touchStartX=0, touchStartY=0, touchMoved=false, touchTimer=null;
 
     el.addEventListener('touchstart', e=>{
+      e.stopPropagation();
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
       touchMoved = false;
+      // 길게 누르기 → 재배치 (500ms)
       touchTimer = setTimeout(()=>{
-        // 길게 누르면 드래그 모드 시작
         touchTimer = null;
-        startBlockTouchDrag(e, key, taskId, el);
-      }, 300);
+        if(!touchMoved){
+          // 진동 피드백
+          if(navigator.vibrate) navigator.vibrate(30);
+          startBlockTouchDrag(e, key, taskId, el);
+        }
+      }, 500);
     }, {passive:true});
 
     el.addEventListener('touchmove', e=>{
-      touchMoved = true;
-      if(touchTimer){ clearTimeout(touchTimer); touchTimer=null; }
+      const dx = Math.abs(e.touches[0].clientX - touchStartX);
+      const dy = Math.abs(e.touches[0].clientY - touchStartY);
+      if(dx>5||dy>5){
+        touchMoved = true;
+        if(touchTimer){ clearTimeout(touchTimer); touchTimer=null; }
+      }
     }, {passive:true});
 
     el.addEventListener('touchend', e=>{
       if(touchTimer){ clearTimeout(touchTimer); touchTimer=null; }
+      // 움직임 없이 손 뗌 → 탭 삭제
       if(!touchMoved && !blockTouchDragging){
-        // 짧게 탭 → 삭제
-        onBlockClick(e, key);
+        e.preventDefault();
+        removeScheduledBlock(key);
       }
-    }, {passive:true});
+    }, {passive:false});
   });
 
   // 드래그 과제 칩 렌더
@@ -2879,6 +2893,11 @@ let blockTouchDragging = false;
 let blockTouchClone = null;
 
 function startBlockTouchDrag(e, key, taskId, el){
+  // 텍스트 선택 방지
+  if(window.getSelection) window.getSelection().removeAllRanges();
+  document.body.style.userSelect='none';
+  document.body.style.webkitUserSelect='none';
+
   blockTouchDragging = true;
   dragBlockKey = key;
   dragTaskId = taskId;
@@ -2919,6 +2938,8 @@ function startBlockTouchDrag(e, key, taskId, el){
     document.removeEventListener('touchend', onEnd);
     if(blockTouchClone){ blockTouchClone.remove(); blockTouchClone=null; }
     el.style.visibility='';
+    document.body.style.userSelect='';
+    document.body.style.webkitUserSelect='';
     removeDragPreview();
     const t1 = e2.changedTouches[0];
     const below = document.elementFromPoint(t1.clientX, t1.clientY);
