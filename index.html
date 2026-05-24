@@ -760,7 +760,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.13 · 2026-05-24
+    v2.6.14 · 2026-05-24
   </div>
 </div>
 
@@ -2560,8 +2560,8 @@ const TIMETABLE = {
 
 const DAY_LABELS = {sun:'일',mon:'월',tue:'화',wed:'수',thu:'목',fri:'금',sat:'토'};
 const ALL_DAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
-const SCHOOL_START = 8;  // 08:00
-const SCHOOL_END = 22;   // 22:00
+const SCHOOL_START = 0;  // 00:00
+const SCHOOL_END = 24;   // 24:00
 
 let scheduleOffset = 0; // 0 = 이번 주
 
@@ -2629,7 +2629,7 @@ function renderSchedule(){
   }
 
   const totalMins = (SCHOOL_END - SCHOOL_START) * 60;
-  const slotH = 32; // px per hour
+  const slotH = 24; // px per hour
 
   // 시간 레이블 + 요일 헤더
   let html = `<div style="display:grid;grid-template-columns:20px repeat(7,minmax(0,1fr));gap:0;width:100%;table-layout:fixed">`;
@@ -3043,7 +3043,7 @@ let previewEl = null;
 function showPreview(col, slotMin, durationMin, valid){
   removePreview();
   if(!col) return;
-  const slotH = 32;
+  const slotH = 24;
   const top = ((slotMin - SCHOOL_START*60)/60)*slotH;
   const height = (durationMin/60)*slotH;
   previewEl = document.createElement('div');
