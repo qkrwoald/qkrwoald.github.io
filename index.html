@@ -760,7 +760,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.14 · 2026-05-24
+    v2.6.15 · 2026-05-24
   </div>
 </div>
 
@@ -2629,7 +2629,13 @@ function renderSchedule(){
   }
 
   const totalMins = (SCHOOL_END - SCHOOL_START) * 60;
-  const slotH = 24; // px per hour
+  // 컬럼 너비와 같은 정사각형: pg-wrap 가로 너비 기준으로 계산
+  // pg-wrap은 max-width:540px, 좌우 패딩 16px
+  const wrapInner = Math.min(window.innerWidth, 540) - 32;
+  const timeLabelW = 20;
+  const colWidth = (wrapInner - timeLabelW) / 7;
+  const slotH = Math.max(20, Math.round(colWidth)); // 최소 20px 보장
+  window._slotH = slotH; // 다른 함수에서 참조
 
   // 시간 레이블 + 요일 헤더
   let html = `<div style="display:grid;grid-template-columns:20px repeat(7,minmax(0,1fr));gap:0;width:100%;table-layout:fixed">`;
@@ -3043,7 +3049,7 @@ let previewEl = null;
 function showPreview(col, slotMin, durationMin, valid){
   removePreview();
   if(!col) return;
-  const slotH = 24;
+  const slotH = window._slotH || 24;
   const top = ((slotMin - SCHOOL_START*60)/60)*slotH;
   const height = (durationMin/60)*slotH;
   previewEl = document.createElement('div');
