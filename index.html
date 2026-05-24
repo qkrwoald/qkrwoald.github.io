@@ -764,7 +764,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.7.0 · 2026-05-24
+    v2.7.1 · 2026-05-24
   </div>
 </div>
 
@@ -1458,12 +1458,25 @@ async function doKsainLogin(){
       return;
     }
     const u=data.data.user;
+    const token=data.data.token;
+
+    // 추가 정보(positionID = 학번) 가져오기
+    let positionID = uid;
+    try{
+      const ures = await fetch(KSAIN_BASE+'/auth/user/'+u.uid, {
+        headers:{'Authorization':'Bearer '+token}
+      });
+      const udata = await ures.json();
+      if(udata?.data?.positionID) positionID = udata.data.positionID;
+    }catch(e){ console.warn('user info fetch failed:', e); }
+
     const s={
       uid:u.uid,
       name:u.name||uid,
-      email:(u.uid||uid)+'@ksa.hs.kr', // 학번 기반 이메일 추정
+      positionID:positionID, // 학번 (예: 25-050)
+      email:positionID+'@ksa.hs.kr', // 학교 메일은 학번 기반
       ksainId:uid,
-      ksainToken:data.data.token,
+      ksainToken:token,
       groups:u.groups||[]
     };
     saveSession(s);
@@ -2530,6 +2543,21 @@ async function initApp(session){
   document.getElementById('auth-screen').style.display='none';
   document.getElementById('app').style.display='block';
   loadTimetableFromStorage();
+
+  // 기존 세션에 positionID가 없으면 가져와서 이메일 보정
+  if(!CU.positionID && CU.ksainToken){
+    try{
+      const ures = await fetch(KSAIN_BASE+'/auth/user/'+CU.uid, {
+        headers:{'Authorization':'Bearer '+CU.ksainToken}
+      });
+      const udata = await ures.json();
+      if(udata?.data?.positionID){
+        CU.positionID = udata.data.positionID;
+        CU.email = udata.data.positionID+'@ksa.hs.kr';
+        saveSession(CU);
+      }
+    }catch(e){ console.warn('positionID fetch failed:', e); }
+  }
   const pill=document.getElementById('user-pill');
   if(session.picture){
     pill.innerHTML=`<img src="${session.picture}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
