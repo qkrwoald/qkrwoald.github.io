@@ -764,7 +764,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.7.2 · 2026-05-24
+    v2.7.3 · 2026-05-24
   </div>
 </div>
 
@@ -2585,7 +2585,7 @@ async function initApp(session){
    SCHEDULE — 시간표
 ══════════════════════════════════════ */
 
-// KSA 교시별 시간 매핑 (쉬는시간 메꿔서 30분 단위 정렬)
+// KSA 교시별 시간 매핑 (슬롯 정렬용 - 30분 단위)
 const PERIOD_TIMES = {
   1:  ['08:30','09:30'],
   2:  ['09:30','10:30'],
@@ -2598,6 +2598,20 @@ const PERIOD_TIMES = {
   9:  ['17:30','18:30'],
   10: ['19:30','20:30'],
   11: ['20:30','21:30'],
+};
+// 실제 교시 시간 (화면 표시용)
+const PERIOD_REAL_TIMES = {
+  1:  ['08:40','09:30'],
+  2:  ['09:40','10:30'],
+  3:  ['10:40','11:30'],
+  4:  ['11:40','12:30'],
+  5:  ['13:40','14:30'],
+  6:  ['14:40','15:30'],
+  7:  ['15:40','16:30'],
+  8:  ['16:40','17:30'],
+  9:  ['17:40','18:30'],
+  10: ['19:30','20:20'],
+  11: ['20:30','21:20'],
 };
 
 // 영어 day → 내부 키
@@ -2660,8 +2674,10 @@ function convertKsainTimetable(items){
         name: g.name,
         room: g.room,
         teacher: g.teacher,
-        start: PERIOD_TIMES[ps][0],
+        start: PERIOD_TIMES[ps][0],          // 슬롯 정렬용 (30분 정렬)
         end:   PERIOD_TIMES[pe][1],
+        displayStart: PERIOD_REAL_TIMES[ps][0], // 화면 표시용 실제 시간
+        displayEnd:   PERIOD_REAL_TIMES[pe][1],
         color: color,
       });
     }
@@ -2830,7 +2846,7 @@ function renderSchedule(){
         padding:3px 4px;overflow:hidden;
       ">
         <div style="font-size:8px;font-weight:700;color:${c.color};line-height:1.15;word-break:break-all;overflow:hidden">${c.name}</div>
-        ${height>24?`<div style="font-size:7px;color:var(--ink3);line-height:1.1">${c.start}~${c.end}</div>`:''}
+        ${height>24?`<div style="font-size:7px;color:var(--ink3);line-height:1.1">${c.displayStart||c.start}~${c.displayEnd||c.end}</div>`:''}
         
       </div>`;
     });
