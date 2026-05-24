@@ -627,6 +627,60 @@ canvas{width:100%;display:block;}
 .gmail-suggest-hr{width:60px;padding:4px 8px;background:var(--paper);border:1.5px solid var(--divider);border-radius:var(--r-xs);color:var(--ink);font-size:13px;text-align:center;}
 .gmail-suggest-btns{display:flex;gap:6px;}
 
+/* 드래그 가능한 과제 칩 */
+.dchip{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:7px 12px;border-radius:20px;
+  font-size:12px;font-weight:600;
+  border:1.5px solid var(--divider);background:var(--paper2);
+  color:var(--ink2);
+  cursor:grab;
+  user-select:none;-webkit-user-select:none;
+  -webkit-touch-callout:none;touch-action:none;
+  transition:box-shadow .15s,transform .15s,opacity .15s;
+}
+.dchip:active{cursor:grabbing;transform:scale(1.04);box-shadow:var(--shadow);}
+.dchip.is-dragging{opacity:.35;}
+
+/* 배치된 과제 블록 */
+.tblock{
+  position:absolute;left:2px;right:2px;
+  border-radius:0 var(--r-xs) var(--r-xs) 0;
+  border-left:3px solid var(--terracotta);
+  background:repeating-linear-gradient(
+    45deg,
+    var(--tc-pale), var(--tc-pale) 4px,
+    var(--tc-mid),  var(--tc-mid) 5px
+  );
+  padding:3px 5px;overflow:hidden;
+  user-select:none;-webkit-user-select:none;
+  -webkit-touch-callout:none;touch-action:none;
+  z-index:3;cursor:pointer;
+  transition:filter .15s;
+}
+.tblock:active{filter:brightness(.92);}
+.tblock.is-dragging{opacity:.35;}
+
+/* 드롭 미리보기 */
+.tprev{
+  position:absolute;left:2px;right:2px;
+  border-radius:0 var(--r-xs) var(--r-xs) 0;
+  pointer-events:none;z-index:5;
+  border:2px dashed var(--terracotta);
+  background:var(--tc-mid);
+}
+.tprev.invalid{
+  border-color:var(--rose);
+  background:rgba(192,83,90,.18);
+}
+
+/* 드래그 중 떠 있는 클론 */
+.tghost{
+  position:fixed;pointer-events:none;z-index:9999;
+  opacity:.85;
+  box-shadow:var(--shadow-lg);
+}
+
 /* Gmail 연동 모달 */
 .gmail-modal-ov{
   position:fixed;inset:0;background:rgba(44,40,37,.6);z-index:400;
@@ -706,7 +760,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.12 · 2026-05-24
+    v2.6.13 · 2026-05-24
   </div>
 </div>
 
@@ -831,6 +885,11 @@ canvas{width:100%;display:block;}
         </div>
       </div>
       <div id="schedule-grid" style="overflow:hidden;width:100%"></div>
+      <div class="sec" style="margin-top:18px">과제 드래그</div>
+      <div style="font-size:11px;color:var(--ink3);margin-bottom:8px">
+        과제를 잡고 시간표에 끌어다 놓으세요 · 배치된 블록을 짧게 누르면 제거
+      </div>
+      <div id="chip-tray" style="display:flex;flex-wrap:wrap;gap:6px;padding-bottom:8px"></div>
 
     </div>
 
@@ -2606,7 +2665,7 @@ function renderSchedule(){
   getScheduleDayKeys().forEach((day,di)=>{
     const classes = TIMETABLE[day]||[];
     const totalPx = (SCHOOL_END-SCHOOL_START)*slotH;
-    html += `<div style="position:relative;height:${totalPx}px;border-left:1px solid var(--divider);${di===6?'border-right:1px solid var(--divider)':''}border-bottom:1px solid var(--divider)">`;
+    html += `<div data-day-col="${day}" style="position:relative;height:${totalPx}px;border-left:1px solid var(--divider);${di===6?'border-right:1px solid var(--divider)':''}border-bottom:1px solid var(--divider)">`;
 
     // 시간 구분선
     for(let h=SCHOOL_START;h<=SCHOOL_END;h++){
@@ -2639,6 +2698,47 @@ function renderSchedule(){
   html += `</div>`;
   grid.innerHTML = html;
 
+  // 드롭 슬롯 + 배치 블록 추가
+  const dayKeysArr = getScheduleDayKeys();
+  const cols = grid.querySelectorAll('div[data-day-col]');
+  dayKeysArr.forEach((day,di)=>{
+    const col = cols[di];
+    if(!col) return;
+    const dateStr = dates[di].toISOString().slice(0,10);
+    // 30분 단위 드롭 슬롯 (투명)
+    const totalSlots = (SCHOOL_END-SCHOOL_START)*2;
+    for(let s=0;s<totalSlots;s++){
+      const slotMin = s*30;
+      const slot = document.createElement('div');
+      slot.className = 'tslot';
+      slot.dataset.day = day;
+      slot.dataset.datestr = dateStr;
+      slot.dataset.slotmin = SCHOOL_START*60 + slotMin;
+      slot.style.cssText = `position:absolute;top:${slotMin/60*slotH}px;left:0;right:0;height:${slotH/2}px;z-index:2;`;
+      col.appendChild(slot);
+    }
+    // 배치된 블록
+    scheduledBlocks.filter(b=>b.day===day && b.dateStr===dateStr).forEach(b=>{
+      const t = tasks.find(t=>t.id===b.taskId);
+      if(!t) return;
+      const top = ((b.startMin-SCHOOL_START*60)/60)*slotH;
+      const h   = ((b.endMin-b.startMin)/60)*slotH;
+      const blk = document.createElement('div');
+      blk.className = 'tblock';
+      blk.dataset.blockid = b.id;
+      blk.style.top = (top+1)+'px';
+      blk.style.height = (h-2)+'px';
+      blk.innerHTML = `
+        <div style="font-size:10px;font-weight:700;color:var(--terracotta);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">✏ ${t.name}</div>
+        ${h>28?`<div style="font-size:9px;color:var(--ink2)">${minToTime(b.startMin)}~${minToTime(b.endMin)}</div>`:''}
+      `;
+      col.appendChild(blk);
+      attachBlockHandlers(blk, b);
+    });
+  });
+
+  renderChipTray();
+
   // 현재 시간선 — 주 전체에 걸쳐 표시
   if(scheduleOffset===0){
     const now = new Date();
@@ -2663,7 +2763,303 @@ function renderSchedule(){
   // (드래그앤드롭 기능 일시 제거 - 시간표 그림만 표시)
 }
 
-/* 시간표 — 그림만 표시 (드래그앤드롭 기능 제거됨) */
+/* ══════════════════════════════════════
+   시간표 드래그앤드롭
+══════════════════════════════════════ */
+
+let scheduledBlocks = []; // [{id, taskId, day, startMin, endMin, dateStr}]
+let blockIdCounter = 1;
+
+function minToTime(m){
+  const h=Math.floor(m/60), mi=m%60;
+  return String(h).padStart(2,'0')+':'+String(mi).padStart(2,'0');
+}
+
+// 충돌 검사: 수업·다른 배치 블록과 겹치는지
+function checkConflict(day, dateStr, startMin, endMin, excludeBlockId=null){
+  // 수업
+  const classes = TIMETABLE[day] || [];
+  for(const c of classes){
+    const cs = timeToMinutes(c.start);
+    const ce = timeToMinutes(c.end);
+    if(startMin < ce && endMin > cs) return 'class';
+  }
+  // 다른 블록
+  for(const b of scheduledBlocks){
+    if(b.day!==day || b.dateStr!==dateStr) continue;
+    if(excludeBlockId!==null && b.id===excludeBlockId) continue;
+    if(startMin < b.endMin && endMin > b.startMin) return 'block';
+  }
+  if(endMin > SCHOOL_END*60) return 'overflow';
+  return null;
+}
+
+// 배치되지 않은 과제만 칩 트레이에 표시
+function renderChipTray(){
+  const tray = document.getElementById('chip-tray');
+  if(!tray) return;
+  const used = new Set(scheduledBlocks.map(b=>b.taskId));
+  const list = tasks.filter(t=>!t.done && !used.has(t.id))
+    .sort((a,b)=>(b.score||0)-(a.score||0));
+  if(!list.length){
+    tray.innerHTML='<div style="font-size:13px;color:var(--ink3);padding:4px 0">모든 과제가 배치되었거나 진행 중인 과제가 없습니다.</div>';
+    return;
+  }
+  tray.innerHTML = list.map(t=>{
+    const c = sc(t.subject||'');
+    const short = t.name.length>14 ? t.name.slice(0,13)+'…' : t.name;
+    return `<div class="dchip" data-taskid="${t.id}" style="border-color:${c};color:${c}">
+      <span style="width:7px;height:7px;border-radius:50%;background:${c};display:inline-block"></span>
+      ${short}
+      <span style="font-size:10px;opacity:.6">${t.hours}h</span>
+    </div>`;
+  }).join('');
+  // 핸들러 부착
+  tray.querySelectorAll('.dchip').forEach(el=>{
+    attachChipHandlers(el, parseInt(el.dataset.taskid));
+  });
+}
+
+// ── 통합 드래그 핸들러 ──
+// 칩(새 과제) 또는 블록(기존 배치) → 슬롯에 드롭
+// PC: pointerdown/move/up 사용 (mouse + touch 통합)
+
+let dragState = null;
+/*
+  dragState = {
+    sourceType: 'chip' | 'block',
+    taskId, durationMin,
+    sourceBlock,  // 블록 이동 시 원본 b
+    sourceEl,     // 원본 DOM (.dchip 또는 .tblock)
+    ghost,        // 떠다니는 클론
+    preview,      // 미리보기 DOM
+    startX, startY,
+    moved
+  }
+*/
+
+function attachChipHandlers(el, taskId){
+  el.addEventListener('pointerdown', e=>{
+    if(e.button && e.button!==0) return;
+    const t = tasks.find(t=>t.id===taskId);
+    if(!t) return;
+    startDrag(e, {
+      sourceType:'chip',
+      taskId,
+      durationMin: Math.ceil((t.hours||1)*60/30)*30,
+      sourceBlock: null,
+      sourceEl: el
+    });
+  });
+}
+
+function attachBlockHandlers(el, block){
+  let pressTimer = null;
+  let longPressed = false;
+  let moved = false;
+  let startX=0, startY=0;
+
+  el.addEventListener('pointerdown', e=>{
+    if(e.button && e.button!==0) return;
+    longPressed = false; moved = false;
+    startX = e.clientX; startY = e.clientY;
+    // 데스크탑은 즉시 드래그 시작 가능, 모바일은 길게 누름
+    const isTouch = e.pointerType==='touch';
+    if(isTouch){
+      pressTimer = setTimeout(()=>{
+        pressTimer = null;
+        longPressed = true;
+        if(navigator.vibrate) navigator.vibrate(30);
+        const t = tasks.find(t=>t.id===block.taskId);
+        if(!t) return;
+        startDrag(e, {
+          sourceType:'block',
+          taskId: block.taskId,
+          durationMin: block.endMin - block.startMin,
+          sourceBlock: block,
+          sourceEl: el
+        }, true);
+      }, 400);
+    } else {
+      // 마우스: pointerdown 직후엔 대기, move 일정 거리 가면 드래그
+      const t = tasks.find(t=>t.id===block.taskId);
+      if(!t) return;
+      el._pendingDrag = {
+        sourceType:'block',
+        taskId: block.taskId,
+        durationMin: block.endMin - block.startMin,
+        sourceBlock: block,
+        sourceEl: el,
+        startEvent: e
+      };
+    }
+  });
+
+  el.addEventListener('pointermove', e=>{
+    const dx = Math.abs(e.clientX - startX);
+    const dy = Math.abs(e.clientY - startY);
+    if(dx>4 || dy>4){
+      moved = true;
+      if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
+      // 마우스 펜딩 드래그 발동
+      if(el._pendingDrag && !dragState){
+        const pd = el._pendingDrag;
+        el._pendingDrag = null;
+        startDrag(pd.startEvent, pd);
+      }
+    }
+  });
+
+  el.addEventListener('pointerup', e=>{
+    if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
+    el._pendingDrag = null;
+    // 길게 누르지도 않고 움직이지도 않았으면 → 클릭 = 제거
+    if(!longPressed && !moved && !dragState){
+      removeBlock(block.id);
+    }
+  });
+
+  el.addEventListener('pointercancel', e=>{
+    if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
+    el._pendingDrag = null;
+  });
+}
+
+function startDrag(e, info, captureNow=false){
+  // 이전 드래그 정리
+  endDrag(true);
+
+  dragState = {...info, startX:e.clientX, startY:e.clientY, moved:false};
+
+  // 원본 흐릿하게
+  info.sourceEl.classList.add('is-dragging');
+
+  // ghost 클론 (칩 모양)
+  const taskName = (tasks.find(t=>t.id===info.taskId)?.name)||'?';
+  const ghost = document.createElement('div');
+  ghost.className = 'dchip tghost';
+  ghost.style.cssText = `position:fixed;left:${e.clientX-50}px;top:${e.clientY-20}px;
+    background:var(--paper2);border:1.5px solid var(--terracotta);color:var(--terracotta);`;
+  ghost.textContent = '✏ '+(taskName.length>14?taskName.slice(0,13)+'…':taskName);
+  document.body.appendChild(ghost);
+  dragState.ghost = ghost;
+
+  // pointermove/up 등록
+  document.addEventListener('pointermove', onDragMove);
+  document.addEventListener('pointerup', onDragEnd);
+  document.addEventListener('pointercancel', onDragEnd);
+
+  if(captureNow && e.currentTarget && e.currentTarget.setPointerCapture){
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
+  }
+}
+
+function onDragMove(e){
+  if(!dragState) return;
+  e.preventDefault?.();
+  const dx = Math.abs(e.clientX - dragState.startX);
+  const dy = Math.abs(e.clientY - dragState.startY);
+  if(dx>3||dy>3) dragState.moved = true;
+
+  // ghost 따라오게
+  if(dragState.ghost){
+    dragState.ghost.style.left = (e.clientX-50)+'px';
+    dragState.ghost.style.top  = (e.clientY-20)+'px';
+  }
+
+  // 미리보기: 현재 포인터 아래 슬롯 찾기
+  if(dragState.ghost) dragState.ghost.style.display='none';
+  const below = document.elementFromPoint(e.clientX, e.clientY);
+  if(dragState.ghost) dragState.ghost.style.display='';
+
+  removePreview();
+
+  const slot = below?.classList?.contains('tslot') ? below : null;
+  if(slot){
+    const day = slot.dataset.day;
+    const dateStr = slot.dataset.datestr;
+    const slotMin = parseInt(slot.dataset.slotmin);
+    const endMin = slotMin + dragState.durationMin;
+    const conflict = checkConflict(day, dateStr, slotMin, endMin,
+      dragState.sourceType==='block' ? dragState.sourceBlock.id : null);
+    showPreview(slot.parentElement, slotMin, dragState.durationMin, !conflict);
+  }
+}
+
+function onDragEnd(e){
+  if(!dragState) return;
+
+  // 미리보기 확인하여 드롭 처리
+  const below = dragState.ghost ? (()=>{
+    dragState.ghost.style.display='none';
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    return el;
+  })() : null;
+
+  const slot = below?.classList?.contains('tslot') ? below : null;
+  let placed = false;
+  if(slot){
+    const day = slot.dataset.day;
+    const dateStr = slot.dataset.datestr;
+    const slotMin = parseInt(slot.dataset.slotmin);
+    const endMin = slotMin + dragState.durationMin;
+    const conflict = checkConflict(day, dateStr, slotMin, endMin,
+      dragState.sourceType==='block' ? dragState.sourceBlock.id : null);
+    if(!conflict){
+      // 블록 이동: 원본 제거 후 새 위치 추가
+      if(dragState.sourceType==='block'){
+        scheduledBlocks = scheduledBlocks.filter(b=>b.id!==dragState.sourceBlock.id);
+      }
+      scheduledBlocks.push({
+        id: blockIdCounter++,
+        taskId: dragState.taskId,
+        day, dateStr,
+        startMin: slotMin, endMin
+      });
+      placed = true;
+      toast('배치됨 ✓','ok');
+    } else if(conflict==='class'){ toast('수업 시간과 겹칩니다','err'); }
+      else if(conflict==='block'){ toast('이미 배치된 과제와 겹칩니다','err'); }
+      else if(conflict==='overflow'){ toast('학교 시간을 벗어납니다','err'); }
+  }
+
+  endDrag(false);
+  if(placed) renderSchedule();
+}
+
+function endDrag(silent){
+  document.removeEventListener('pointermove', onDragMove);
+  document.removeEventListener('pointerup', onDragEnd);
+  document.removeEventListener('pointercancel', onDragEnd);
+  if(dragState){
+    dragState.sourceEl?.classList.remove('is-dragging');
+    dragState.ghost?.remove();
+  }
+  removePreview();
+  dragState = null;
+}
+
+let previewEl = null;
+function showPreview(col, slotMin, durationMin, valid){
+  removePreview();
+  if(!col) return;
+  const slotH = 32;
+  const top = ((slotMin - SCHOOL_START*60)/60)*slotH;
+  const height = (durationMin/60)*slotH;
+  previewEl = document.createElement('div');
+  previewEl.className = 'tprev'+(valid?'':' invalid');
+  previewEl.style.top = top+'px';
+  previewEl.style.height = height+'px';
+  col.appendChild(previewEl);
+}
+function removePreview(){
+  if(previewEl){ previewEl.remove(); previewEl=null; }
+}
+
+function removeBlock(id){
+  scheduledBlocks = scheduledBlocks.filter(b=>b.id!==id);
+  renderSchedule();
+}
 
 
 
