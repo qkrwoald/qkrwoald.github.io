@@ -740,7 +740,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.6 · 2026-05-23
+    v2.6.7 · 2026-05-24
   </div>
 </div>
 
@@ -2606,7 +2606,7 @@ function renderSchedule(){
   }
 
   const totalMins = (SCHOOL_END - SCHOOL_START) * 60;
-  const slotH = 48; // px per hour
+  const slotH = 32; // px per hour
 
   // 시간 레이블 + 요일 헤더
   let html = `<div style="display:grid;grid-template-columns:36px repeat(7,1fr);gap:0;min-width:300px">`;
