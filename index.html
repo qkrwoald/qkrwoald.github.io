@@ -740,7 +740,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.8 · 2026-05-24
+    v2.6.9 · 2026-05-24
   </div>
 </div>
 
@@ -855,7 +855,7 @@ canvas{width:100%;display:block;}
     </div>
 
     <!-- VIZ -->
-    <div class="pg" id="pg-schedule" style="margin-left:-16px;margin-right:-16px;padding:0 8px">
+    <div class="pg" id="pg-schedule" style="margin-left:-16px;margin-right:-20px;padding:0 2px 0 4px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <div class="sec" style="margin:0">주간 시간표</div>
         <div style="display:flex;gap:6px;align-items:center">
@@ -2609,10 +2609,10 @@ function renderSchedule(){
   const slotH = 32; // px per hour
 
   // 시간 레이블 + 요일 헤더
-  let html = `<div style="display:grid;grid-template-columns:28px repeat(7,1fr);gap:0;width:100%;table-layout:fixed">`;
+  let html = `<div style="display:grid;grid-template-columns:22px repeat(7,1fr);gap:0;width:100%;table-layout:fixed">`;
 
   // 요일 헤더
-  html += `<div style="height:36px;width:28px"></div>`;
+  html += `<div style="height:36px;width:22px"></div>`;
   const dayKeys=getScheduleDayKeys();
   dates.forEach((d,i)=>{
     const isToday = d.toISOString().slice(0,10)===todayStr;
@@ -2630,7 +2630,7 @@ function renderSchedule(){
   });
 
   // 시간 그리드
-  html += `<div style="position:relative;grid-column:1;grid-row:2;width:28px">`;
+  html += `<div style="position:relative;grid-column:1;grid-row:2;width:22px">`;
   for(let h=SCHOOL_START;h<=SCHOOL_END;h++){
     const top = (h-SCHOOL_START)*slotH;
     html += `<div style="position:absolute;top:${top}px;left:0;right:0;font-size:9px;color:var(--ink4);font-family:var(--f-mono);text-align:right;padding-right:4px;line-height:1">${String(h).padStart(2,'0')}</div>`;
@@ -2717,7 +2717,7 @@ function renderSchedule(){
       if(gridEl){
         const top2 = nowMin/60*slotH + 36; // 36px = 헤더 높이
         const line = document.createElement('div');
-        line.style.cssText = `position:absolute;top:${top2}px;left:28px;right:0;
+        line.style.cssText = `position:absolute;top:${top2}px;left:22px;right:0;
           border-top:2px solid var(--terracotta);z-index:6;pointer-events:none`;
         const dot = document.createElement('div');
         dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:var(--terracotta);
@@ -2729,22 +2729,40 @@ function renderSchedule(){
     }
   }
 
-  // 배치된 블록에 이벤트 등록 (innerHTML로 넣으면 onclick이 안 붙는 경우 방지)
+  // 배치된 블록에 이벤트 등록
   grid.querySelectorAll('.sched-task-block').forEach(el=>{
     const key = el.dataset.blockkey;
-    let dragStarted = false;
-    el.addEventListener('dragstart', e=>{
-      dragStarted = true;
-      onBlockDragStart(e, key);
-    });
-    el.addEventListener('dragend', e=>{
-      onBlockDragEnd(e);
-      setTimeout(()=>{ dragStarted=false; }, 50);
-    });
-    el.addEventListener('click', e=>{
-      if(dragStarted) return;
-      onBlockClick(e, key);
-    });
+    const taskId = parseInt(el.dataset.taskid);
+
+    // PC: drag & drop
+    el.addEventListener('dragstart', e=>{ onBlockDragStart(e, key); });
+    el.addEventListener('dragend',   e=>{ onBlockDragEnd(e); });
+
+    // 클릭 삭제 (터치와 구분)
+    let touchMoved = false;
+    let touchTimer = null;
+
+    el.addEventListener('touchstart', e=>{
+      touchMoved = false;
+      touchTimer = setTimeout(()=>{
+        // 길게 누르면 드래그 모드 시작
+        touchTimer = null;
+        startBlockTouchDrag(e, key, taskId, el);
+      }, 300);
+    }, {passive:true});
+
+    el.addEventListener('touchmove', e=>{
+      touchMoved = true;
+      if(touchTimer){ clearTimeout(touchTimer); touchTimer=null; }
+    }, {passive:true});
+
+    el.addEventListener('touchend', e=>{
+      if(touchTimer){ clearTimeout(touchTimer); touchTimer=null; }
+      if(!touchMoved && !blockTouchDragging){
+        // 짧게 탭 → 삭제
+        onBlockClick(e, key);
+      }
+    }, {passive:true});
   });
 
   // 드래그 과제 칩 렌더
@@ -2856,6 +2874,66 @@ function onChipDragStart(e, taskId){
 }
 
 // 배치된 블록 드래그 시작
+/* 블록 터치 드래그 (모바일 재배치) */
+let blockTouchDragging = false;
+let blockTouchClone = null;
+
+function startBlockTouchDrag(e, key, taskId, el){
+  blockTouchDragging = true;
+  dragBlockKey = key;
+  dragTaskId = taskId;
+  blockDragMoved = false;
+  el.style.visibility = 'hidden';
+
+  const t0 = e.touches[0];
+  blockTouchClone = el.cloneNode(true);
+  blockTouchClone.style.cssText = `position:fixed;z-index:9999;opacity:.85;pointer-events:none;
+    left:${t0.clientX - el.offsetWidth/2}px;top:${t0.clientY - 20}px;
+    width:${el.offsetWidth}px;`;
+  document.body.appendChild(blockTouchClone);
+
+  const onMove = e2=>{
+    if(!blockTouchClone) return;
+    e2.preventDefault();
+    const t1 = e2.touches[0];
+    blockTouchClone.style.left = (t1.clientX - el.offsetWidth/2)+'px';
+    blockTouchClone.style.top  = (t1.clientY - 20)+'px';
+    removeDragPreview();
+    blockTouchClone.style.display='none';
+    const below = document.elementFromPoint(t1.clientX, t1.clientY);
+    blockTouchClone.style.display='';
+    if(below?.dataset?.slot){
+      const t=tasks.find(t=>t.id===dragTaskId);
+      if(t){
+        const slotMin=parseInt(below.dataset.slotmin);
+        const day=below.dataset.day;
+        const dateStr=below.dataset.datestr;
+        const durationMin=Math.ceil((t.hours||1)*60/30)*30;
+        const overlap=checkOverlap(day,slotMin,slotMin+durationMin,dateStr,t.id);
+        showDragPreview(below.parentElement, slotMin, durationMin, !overlap);
+      }
+    }
+  };
+  const onEnd = e2=>{
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+    if(blockTouchClone){ blockTouchClone.remove(); blockTouchClone=null; }
+    el.style.visibility='';
+    removeDragPreview();
+    const t1 = e2.changedTouches[0];
+    const below = document.elementFromPoint(t1.clientX, t1.clientY);
+    if(below?.dataset?.slot){
+      const {day, slotmin, datestr} = below.dataset;
+      onSlotDrop({preventDefault:()=>{}, currentTarget:below}, day, parseInt(slotmin), datestr);
+    } else {
+      dragTaskId=null; dragBlockKey=null;
+    }
+    setTimeout(()=>{ blockTouchDragging=false; }, 50);
+  };
+  document.addEventListener('touchmove', onMove, {passive:false});
+  document.addEventListener('touchend', onEnd, {passive:true});
+}
+
 function onBlockDragStart(e, key){
   const b=scheduledBlocks.find(b=>getScheduledBlockKey(b)===key);
   if(!b) return;
