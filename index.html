@@ -650,15 +650,12 @@ canvas{width:100%;display:block;}
   position:absolute;left:2px;right:2px;
   border-radius:0 var(--r-xs) var(--r-xs) 0;
   border-left:3px solid var(--terracotta);
-  background:repeating-linear-gradient(
-    45deg,
-    var(--tc-pale), var(--tc-pale) 4px,
-    var(--tc-mid),  var(--tc-mid) 5px
-  );
+  background:var(--terracotta);
   padding:3px 5px;overflow:hidden;
   user-select:none;-webkit-user-select:none;
   -webkit-touch-callout:none;touch-action:none;
   z-index:3;cursor:pointer;
+  box-shadow:0 1px 2px rgba(0,0,0,.08);
   transition:filter .15s;
 }
 .tblock:active{filter:brightness(.92);}
@@ -764,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.7.3 · 2026-05-24
+    v2.7.4 · 2026-05-24
   </div>
 </div>
 
@@ -2888,8 +2885,8 @@ function renderSchedule(){
       blk.style.top = (top+1)+'px';
       blk.style.height = (h-2)+'px';
       blk.innerHTML = `
-        <div style="font-size:9px;font-weight:700;color:var(--terracotta);line-height:1.2;word-break:break-all;overflow:hidden">${t.name}</div>
-        ${h>24?`<div style="font-size:8px;color:var(--ink2);line-height:1.1">${minToTime(b.startMin)}~${minToTime(b.endMin)}</div>`:''}
+        <div style="font-size:9px;font-weight:700;color:#fff;line-height:1.2;word-break:break-all;overflow:hidden">${t.name}</div>
+        ${h>24?`<div style="font-size:8px;color:rgba(255,255,255,.85);line-height:1.1">${minToTime(b.startMin)}~${minToTime(b.endMin)}</div>`:''}
       `;
       col.appendChild(blk);
       attachBlockHandlers(blk, b);
