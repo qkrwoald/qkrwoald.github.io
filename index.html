@@ -760,7 +760,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.6.16 · 2026-05-24
+    v2.6.17 · 2026-05-24
   </div>
 </div>
 
@@ -2692,8 +2692,8 @@ function renderSchedule(){
         border-radius:0 var(--r-xs) var(--r-xs) 0;
         padding:3px 4px;overflow:hidden;
       ">
-        <div style="font-size:9px;font-weight:700;color:${c.color};line-height:1.2;word-break:break-all;overflow:hidden">${c.name}</div>
-        ${height>32?`<div style="font-size:8px;color:var(--ink3);line-height:1.2">${c.start}~${c.end}</div>`:''}
+        <div style="font-size:8px;font-weight:700;color:${c.color};line-height:1.15;word-break:break-all;overflow:hidden">${c.name}</div>
+        ${height>24?`<div style="font-size:7px;color:var(--ink3);line-height:1.1">${c.start}~${c.end}</div>`:''}
         
       </div>`;
     });
@@ -2735,8 +2735,8 @@ function renderSchedule(){
       blk.style.top = (top+1)+'px';
       blk.style.height = (h-2)+'px';
       blk.innerHTML = `
-        <div style="font-size:10px;font-weight:700;color:var(--terracotta);line-height:1.2;word-break:break-all;overflow:hidden">✏ ${t.name}</div>
-        ${h>28?`<div style="font-size:9px;color:var(--ink2)">${minToTime(b.startMin)}~${minToTime(b.endMin)}</div>`:''}
+        <div style="font-size:9px;font-weight:700;color:var(--terracotta);line-height:1.2;word-break:break-all;overflow:hidden">${t.name}</div>
+        ${h>24?`<div style="font-size:8px;color:var(--ink2);line-height:1.1">${minToTime(b.startMin)}~${minToTime(b.endMin)}</div>`:''}
       `;
       col.appendChild(blk);
       attachBlockHandlers(blk, b);
