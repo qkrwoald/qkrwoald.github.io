@@ -762,7 +762,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.0.5 · 2026-05-24
+    v3.0.6 · 2026-05-24
   </div>
 </div>
 
@@ -3523,8 +3523,27 @@ async function initApp(session){
   }
   toast('데이터 불러오는 중...⏳');
   const hasData=await loadState(session.uid);
+  // 저장된 페이지 미리 읽기 (showPg('home')이 덮어쓰기 전에)
+  let savedPage = null;
+  try{
+    const saved = JSON.parse(localStorage.getItem('sq_curpage')||'null');
+    if(saved && saved.page && Date.now()-saved.ts < 86400000){
+      savedPage = saved;
+    }
+  }catch(e){}
   // 새 유저는 빈 상태로 시작 (데모 데이터 없음)
-  rebuild();applyTheme();renderPomoDots();showPg('home');
+  rebuild();applyTheme();renderPomoDots();
+  // 저장된 페이지가 있고 home이 아니면 거기로, 아니면 home
+  if(savedPage && savedPage.page !== 'home'){
+    if(savedPage.page === 'group-detail' && savedPage.activeGroupId){
+      activeGroupId = savedPage.activeGroupId;
+      showPg('group-detail');
+    } else {
+      showPg(savedPage.page);
+    }
+  } else {
+    showPg('home');
+  }
   if(window.matchMedia('(prefers-color-scheme: dark)').matches&&S.theme==='system'){document.documentElement.dataset.theme='dark';}
   // Classroom 연동 UI 업데이트
   updateGmailSettingsUI();
@@ -3538,19 +3557,6 @@ async function initApp(session){
   if(!CU.isAdmin) setTimeout(syncKsainTimetable, 1500);
   // 본인 과제를 sharedTasks와 동기화
   setTimeout(syncMyTasksToShared, 2500);
-
-  // 새로고침 시 마지막 페이지 복원 (24시간 이내만)
-  try{
-    const saved = JSON.parse(localStorage.getItem('sq_curpage')||'null');
-    if(saved && saved.page && Date.now()-saved.ts < 86400000){
-      if(saved.page === 'group-detail' && saved.activeGroupId){
-        activeGroupId = saved.activeGroupId;
-        showPg('group-detail');
-      } else if(saved.page !== 'home'){
-        showPg(saved.page);
-      }
-    }
-  }catch(e){}
 }
 
 /* ══════════════════════════════════════
