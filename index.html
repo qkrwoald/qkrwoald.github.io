@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.9.3 · 2026-05-24
+    v3.0.0 · 2026-05-24
   </div>
 </div>
 
@@ -846,38 +846,21 @@ canvas{width:100%;display:block;}
     </div>
 
     <!-- TIMER -->
-    <div class="pg" id="pg-timer">
-      <div class="chips" id="mchips" style="margin-bottom:14px;justify-content:center">
-        <button class="ch on" onclick="setMode(25,'집중',this)">집중 25분</button>
-        <button class="ch" onclick="setMode(5,'휴식',this)">휴식 5분</button>
-        <button class="ch" onclick="setMode(15,'긴 휴식',this)">긴 휴식</button>
+    <div class="pg" id="pg-group">
+      <!-- 초대 알림 -->
+      <div id="group-invites" style="margin-bottom:14px"></div>
+
+      <!-- 내 모임 목록 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="sec" style="margin:0">내 모임</div>
+        <button class="btn btn-main" onclick="openCreateGroupModal()" style="padding:7px 13px;font-size:12px">+ 모임 만들기</button>
       </div>
-      <div class="tcard2">
-        <div class="tsvg">
-          <svg width="168" height="168" viewBox="0 0 168 168">
-            <circle fill="none" stroke="var(--paper3)" stroke-width="8" cx="84" cy="84" r="74"/>
-            <circle id="tring" fill="none" stroke="var(--terracotta)" stroke-width="8" stroke-linecap="round"
-              cx="84" cy="84" r="74" stroke-dasharray="465" stroke-dashoffset="0"
-              style="transition:stroke-dashoffset 1s linear"/>
-          </svg>
-          <div class="tcenter">
-            <div class="ttime" id="tdisp">25:00</div>
-            <div class="tmode" id="tlbl">집중 모드</div>
-          </div>
-        </div>
-        <div class="tbns">
-          <button class="btn btn-main" id="tbtn" onclick="toggleTimer()" style="min-width:104px">▶ 시작</button>
-          <button class="btn btn-line" onclick="resetTimer()">↺ 초기화</button>
-        </div>
-        <div class="pdots" id="pdots"></div>
-        <div style="text-align:center;margin-top:14px">
-          <div style="font-size:12px;color:var(--ink3)">오늘 완료한 뽀모도로</div>
-          <div style="font-family:var(--f-mono);font-size:28px;font-weight:500;color:var(--terracotta)" id="pcnt">0</div>
-          <div style="font-size:16px;margin-top:2px">🍅</div>
-        </div>
-      </div>
-      <div class="sec">집중 과제 선택</div>
-      <div class="card" id="fsel"></div>
+      <div id="group-list"></div>
+    </div>
+
+    <!-- 모임 상세 페이지 -->
+    <div class="pg" id="pg-group-detail">
+      <div id="group-detail-content"></div>
     </div>
 
     <!-- VIZ -->
@@ -1189,8 +1172,8 @@ canvas{width:100%;display:block;}
     <button class="bnav on" id="nb-home" onclick="showPg('home')"><span class="ni">🏠</span><span>홈</span></button>
     <button class="bnav" id="nb-tasks" onclick="showPg('tasks')"><span class="ni">📋</span><span>과제</span><span class="nbadge" id="nbdot"></span></button>
     <button class="bnav" id="nb-schedule" onclick="showPg('schedule')"><span class="ni">📅</span><span>일정</span></button>
+    <button class="bnav" id="nb-group" onclick="showPg('group')"><span class="ni">👥</span><span>모임</span><span class="nbadge" id="nbdot-group"></span></button>
     <button class="bnav" id="nb-dash" onclick="showPg('dash')"><span class="ni">📊</span><span>현황</span></button>
-    <button class="bnav" id="nb-timer" onclick="showPg('timer')"><span class="ni">⏱</span><span>타이머</span></button>
   </nav>
 
   <button class="fab" id="fab" onclick="openSheet()">＋</button>
@@ -1456,6 +1439,642 @@ async function unshareTask(taskId){
     const ref = window._fsDoc(window._db, 'sharedTasks', sharedId);
     await window._fsDeleteDoc(ref);
   }catch(e){ console.warn('unshareTask error:', e); }
+}
+
+/* ══════════════════════════════════════
+   모임(그룹) 시스템
+══════════════════════════════════════ */
+
+let currentGroups = [];      // 내가 속한 모임들 (캐시)
+let currentInvites = [];     // 받은 초대 (캐시)
+let activeGroupId = null;    // 현재 보고 있는 모임 상세
+
+// 짧은 랜덤 ID 생성
+function genId(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
+
+// 학번으로 사용자 검색 (Firestore users 컬렉션 사용 - 없으면 KSAIN API)
+async function findUserByPositionId(positionID){
+  // 1순위: KSAIN API
+  if(CU?.ksainToken){
+    try{
+      // KSAIN에는 학번 -> uid 검색 API가 명시 안되어 있어 일단 메모리만 확인
+      // (제대로 하려면 백엔드 필요, 일단 입력값 그대로 사용)
+    }catch(e){}
+  }
+  // 일단 학번을 그대로 신뢰 (실제 사용 시 KSAIN으로 검증)
+  return { positionID, uid: positionID, name: '' };
+}
+
+// 내 모임 목록 가져오기
+async function fetchMyGroups(){
+  if(!window._db || !CU) return [];
+  try{
+    const col = window._fsCollection(window._db, 'groups');
+    const q = window._fsQuery(col, window._fsWhere('memberUids','array-contains',CU.uid));
+    const snap = await window._fsGetDocs(q);
+    const groups = [];
+    snap.forEach(d=>groups.push({id:d.id, ...d.data()}));
+    currentGroups = groups;
+    return groups;
+  }catch(e){ console.error('fetchMyGroups:',e); return []; }
+}
+
+// 받은 초대 가져오기
+async function fetchMyInvites(){
+  if(!window._db || !CU) return [];
+  try{
+    const col = window._fsCollection(window._db, 'groups');
+    const q = window._fsQuery(col, window._fsWhere('inviteUids','array-contains',CU.uid));
+    const snap = await window._fsGetDocs(q);
+    const invites = [];
+    snap.forEach(d=>{
+      const data = d.data();
+      const pending = (data.pendingInvites||[]).find(p=>p.uid===CU.uid);
+      if(pending){
+        invites.push({groupId:d.id, groupName:data.name, inviterName:data.ownerName, invitedAt:pending.invitedAt});
+      }
+    });
+    currentInvites = invites;
+    return invites;
+  }catch(e){ console.error('fetchMyInvites:',e); return []; }
+}
+
+// 모임 생성
+async function createGroup(name){
+  if(!window._db || !CU) return null;
+  const groupId = genId();
+  const group = {
+    name,
+    ownerUid: CU.uid,
+    ownerName: CU.name,
+    ownerPositionID: CU.positionID,
+    members: [{
+      uid: CU.uid,
+      name: CU.name,
+      positionID: CU.positionID,
+      role: '리더',
+      joinedAt: Date.now()
+    }],
+    memberUids: [CU.uid],
+    pendingInvites: [],
+    inviteUids: [],
+    groupTasks: [],
+    createdAt: Date.now()
+  };
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    await window._fsSetDoc(ref, group);
+    return groupId;
+  }catch(e){ console.error('createGroup:',e); return null; }
+}
+
+// 멤버 초대
+async function inviteToGroup(groupId, positionID, name){
+  if(!window._db) return false;
+  // 초대 정보는 학번을 uid로 가정 (KSAIN UID 따로 알 수 없으므로)
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    const snap = await window._fsGetDoc(ref);
+    if(!snap.exists()) return false;
+    const data = snap.data();
+    // 이미 멤버인지
+    if((data.memberUids||[]).includes(positionID)) { toast('이미 멤버입니다','err'); return false; }
+    // 이미 초대됨
+    if((data.inviteUids||[]).includes(positionID)) { toast('이미 초대된 사용자입니다','err'); return false; }
+    const newInvite = { uid:positionID, positionID, name:name||'', invitedAt:Date.now() };
+    const newPending = [...(data.pendingInvites||[]), newInvite];
+    const newInviteUids = [...(data.inviteUids||[]), positionID];
+    await window._fsSetDoc(ref, {...data, pendingInvites:newPending, inviteUids:newInviteUids});
+    return true;
+  }catch(e){ console.error('invite:',e); return false; }
+}
+
+// 초대 수락
+async function acceptInvite(groupId){
+  if(!window._db || !CU) return false;
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    const snap = await window._fsGetDoc(ref);
+    if(!snap.exists()) return false;
+    const data = snap.data();
+    const pending = (data.pendingInvites||[]).find(p=>p.uid===CU.uid);
+    if(!pending) return false;
+    // pendingInvites에서 제거
+    const newPending = data.pendingInvites.filter(p=>p.uid!==CU.uid);
+    const newInviteUids = (data.inviteUids||[]).filter(u=>u!==CU.uid);
+    // members에 추가
+    const newMember = {uid:CU.uid, name:CU.name, positionID:CU.positionID, role:'멤버', joinedAt:Date.now()};
+    const newMembers = [...(data.members||[]), newMember];
+    const newMemberUids = [...(data.memberUids||[]), CU.uid];
+    await window._fsSetDoc(ref, {...data, pendingInvites:newPending, inviteUids:newInviteUids, members:newMembers, memberUids:newMemberUids});
+    return true;
+  }catch(e){ console.error('accept:',e); return false; }
+}
+
+// 초대 거절
+async function rejectInvite(groupId){
+  if(!window._db || !CU) return false;
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    const snap = await window._fsGetDoc(ref);
+    if(!snap.exists()) return false;
+    const data = snap.data();
+    const newPending = (data.pendingInvites||[]).filter(p=>p.uid!==CU.uid);
+    const newInviteUids = (data.inviteUids||[]).filter(u=>u!==CU.uid);
+    await window._fsSetDoc(ref, {...data, pendingInvites:newPending, inviteUids:newInviteUids});
+    return true;
+  }catch(e){ console.error('reject:',e); return false; }
+}
+
+// 모임 나가기
+async function leaveGroup(groupId){
+  if(!window._db || !CU) return false;
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    const snap = await window._fsGetDoc(ref);
+    if(!snap.exists()) return false;
+    const data = snap.data();
+    if(data.ownerUid===CU.uid){
+      // 리더는 나가기 대신 모임 해체만 가능
+      if(!confirm('리더가 나가면 모임이 해체됩니다. 계속하시겠습니까?')) return false;
+      await window._fsDeleteDoc(ref);
+      return true;
+    }
+    const newMembers = (data.members||[]).filter(m=>m.uid!==CU.uid);
+    const newMemberUids = (data.memberUids||[]).filter(u=>u!==CU.uid);
+    await window._fsSetDoc(ref, {...data, members:newMembers, memberUids:newMemberUids});
+    return true;
+  }catch(e){ console.error('leave:',e); return false; }
+}
+
+// 모임 가져오기 (실시간 X, 단발성)
+async function fetchGroup(groupId){
+  if(!window._db) return null;
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    const snap = await window._fsGetDoc(ref);
+    if(!snap.exists()) return null;
+    return {id:groupId, ...snap.data()};
+  }catch(e){ console.error('fetchGroup:',e); return null; }
+}
+
+// 모임 과제 추가
+async function addGroupTask(groupId, taskData){
+  const g = await fetchGroup(groupId);
+  if(!g) return false;
+  const newTask = {
+    id: genId(),
+    name: taskData.name,
+    deadline: taskData.deadline||'',
+    hours: taskData.hours||1,
+    importance: taskData.importance||3,
+    memo: taskData.memo||'',
+    assignees: taskData.assignees||[], // [uid]
+    progressByUser: {}, // {uid: 0~100}
+    createdBy: CU.uid,
+    createdAt: Date.now()
+  };
+  const newTasks = [...(g.groupTasks||[]), newTask];
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    await window._fsSetDoc(ref, {...g, groupTasks:newTasks});
+    return true;
+  }catch(e){ return false; }
+}
+
+// 모임 과제 삭제
+async function delGroupTask(groupId, taskId){
+  const g = await fetchGroup(groupId);
+  if(!g) return false;
+  const newTasks = (g.groupTasks||[]).filter(t=>t.id!==taskId);
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    await window._fsSetDoc(ref, {...g, groupTasks:newTasks});
+    return true;
+  }catch(e){ return false; }
+}
+
+// 본인 진행률 업데이트
+async function updateMyProgress(groupId, taskId, progress){
+  const g = await fetchGroup(groupId);
+  if(!g) return false;
+  const tasksArr = g.groupTasks||[];
+  const idx = tasksArr.findIndex(t=>t.id===taskId);
+  if(idx<0) return false;
+  tasksArr[idx].progressByUser = {...(tasksArr[idx].progressByUser||{}), [CU.uid]:progress};
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    await window._fsSetDoc(ref, {...g, groupTasks:tasksArr});
+    return true;
+  }catch(e){ return false; }
+}
+
+// 멤버 역할 수정
+async function updateMemberRole(groupId, memberUid, newRole){
+  const g = await fetchGroup(groupId);
+  if(!g) return false;
+  if(g.ownerUid!==CU.uid) { toast('리더만 역할을 변경할 수 있습니다','err'); return false; }
+  const members = g.members||[];
+  const idx = members.findIndex(m=>m.uid===memberUid);
+  if(idx<0) return false;
+  members[idx].role = newRole;
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    await window._fsSetDoc(ref, {...g, members});
+    return true;
+  }catch(e){ return false; }
+}
+
+// 멤버 추방
+async function removeMember(groupId, memberUid){
+  const g = await fetchGroup(groupId);
+  if(!g) return false;
+  if(g.ownerUid!==CU.uid) { toast('리더만 추방할 수 있습니다','err'); return false; }
+  if(memberUid===g.ownerUid) { toast('리더는 추방할 수 없습니다','err'); return false; }
+  const newMembers = (g.members||[]).filter(m=>m.uid!==memberUid);
+  const newMemberUids = (g.memberUids||[]).filter(u=>u!==memberUid);
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    await window._fsSetDoc(ref, {...g, members:newMembers, memberUids:newMemberUids});
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ── 모임 탭 렌더링 ── */
+async function renderGroupTab(){
+  await fetchMyInvites();
+  await fetchMyGroups();
+  renderGroupInvites();
+  renderGroupList();
+  updateGroupBadge();
+}
+
+function updateGroupBadge(){
+  const dot = document.getElementById('nbdot-group');
+  if(!dot) return;
+  if(currentInvites.length>0) dot.classList.add('on');
+  else dot.classList.remove('on');
+}
+
+function renderGroupInvites(){
+  const el = document.getElementById('group-invites');
+  if(!el) return;
+  if(!currentInvites.length){ el.innerHTML=''; return; }
+  el.innerHTML = `
+    <div class="sec" style="margin:0 0 8px">📩 받은 초대</div>
+    ${currentInvites.map(inv=>`
+      <div style="background:var(--paper2);border:1.5px solid var(--terracotta);border-radius:var(--r-md);padding:13px;margin-bottom:8px">
+        <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:3px">${inv.groupName}</div>
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:10px">초대자: ${inv.inviterName||'?'}</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-main" onclick="onAcceptInvite('${inv.groupId}')" style="flex:1;padding:8px;font-size:13px">수락</button>
+          <button class="btn btn-line" onclick="onRejectInvite('${inv.groupId}')" style="flex:1;padding:8px;font-size:13px">거절</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderGroupList(){
+  const el = document.getElementById('group-list');
+  if(!el) return;
+  if(!currentGroups.length){
+    el.innerHTML = `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:40px 10px">
+      참여 중인 모임이 없습니다.<br>
+      <span style="font-size:11px;color:var(--ink4);margin-top:6px;display:inline-block">새 모임을 만들거나 초대를 기다려주세요</span>
+    </div>`;
+    return;
+  }
+  el.innerHTML = currentGroups.map(g=>{
+    const memberCount = (g.members||[]).length;
+    const taskCount = (g.groupTasks||[]).length;
+    const isOwner = g.ownerUid===CU.uid;
+    return `
+      <div class="card" onclick="openGroupDetail('${g.id}')" style="cursor:pointer;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              ${isOwner?'<span style="font-size:10px;background:var(--terracotta);color:#fff;padding:2px 6px;border-radius:8px;font-weight:600">리더</span>':''}
+              <div style="font-size:15px;font-weight:700;color:var(--ink)">${g.name}</div>
+            </div>
+            <div style="font-size:11px;color:var(--ink3)">👥 ${memberCount}명 · 📝 과제 ${taskCount}개</div>
+          </div>
+          <div style="color:var(--ink3);font-size:18px">›</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function onAcceptInvite(groupId){
+  if(await acceptInvite(groupId)){
+    toast('수락 완료 ✓','ok');
+    renderGroupTab();
+  } else { toast('실패','err'); }
+}
+
+async function onRejectInvite(groupId){
+  if(await rejectInvite(groupId)){
+    toast('거절됨');
+    renderGroupTab();
+  }
+}
+
+/* ── 모임 만들기 모달 ── */
+function openCreateGroupModal(){
+  document.getElementById('create-group-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'create-group-overlay';
+  overlay.style.cssText = `position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.25);
+    display:flex;align-items:center;justify-content:center;padding:20px`;
+  overlay.onclick = e=>{ if(e.target===overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div style="background:var(--paper2);border-radius:var(--r-lg);padding:20px 22px;
+                box-shadow:var(--shadow-lg);max-width:380px;width:100%">
+      <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:14px">새 모임 만들기</div>
+      <div class="fld">
+        <label>모임 이름</label>
+        <input type="text" id="new-group-name" placeholder="예: 자료구조 프로젝트팀" maxlength="30">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn btn-line" onclick="document.getElementById('create-group-overlay').remove()" style="flex:1;padding:11px">취소</button>
+        <button class="btn btn-main" onclick="submitCreateGroup()" style="flex:1;padding:11px">만들기</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(()=>document.getElementById('new-group-name')?.focus(),100);
+}
+
+async function submitCreateGroup(){
+  const name = document.getElementById('new-group-name').value.trim();
+  if(!name){ toast('이름을 입력해주세요','err'); return; }
+  const id = await createGroup(name);
+  if(id){
+    document.getElementById('create-group-overlay').remove();
+    toast('모임 생성 완료 ✓','ok');
+    openGroupDetail(id);
+  } else toast('생성 실패','err');
+}
+
+/* ── 모임 상세 ── */
+async function openGroupDetail(groupId){
+  activeGroupId = groupId;
+  showPg('group-detail');
+}
+
+async function renderGroupDetail(){
+  if(!activeGroupId) { showPg('group'); return; }
+  const el = document.getElementById('group-detail-content');
+  if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--ink3)">⏳ 로딩...</div>';
+  const g = await fetchGroup(activeGroupId);
+  if(!g){ el.innerHTML='<div style="text-align:center;padding:30px;color:var(--rose)">모임을 찾을 수 없습니다.</div>'; return; }
+  const isOwner = g.ownerUid===CU.uid;
+  const tasksArr = g.groupTasks||[];
+
+  el.innerHTML = `
+    <button class="btn btn-line" onclick="showPg('group')" style="padding:6px 12px;font-size:12px;margin-bottom:12px">‹ 모임 목록</button>
+
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      ${isOwner?'<span style="font-size:10px;background:var(--terracotta);color:#fff;padding:2px 6px;border-radius:8px;font-weight:600">리더</span>':''}
+      <div style="font-size:18px;font-weight:700;color:var(--ink)">${g.name}</div>
+    </div>
+    <div style="font-size:11px;color:var(--ink3);margin-bottom:14px">멤버 ${g.members.length}명 · 과제 ${tasksArr.length}개</div>
+
+    <!-- 멤버 목록 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="sec" style="margin:0">👥 멤버</div>
+      ${isOwner?'<button class="btn btn-line" onclick="openInviteModal()" style="padding:5px 10px;font-size:11px">+ 초대</button>':''}
+    </div>
+    <div id="group-members" style="margin-bottom:18px"></div>
+
+    <!-- 과제 목록 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="sec" style="margin:0">📝 공유 과제</div>
+      <button class="btn btn-line" onclick="openGroupTaskModal()" style="padding:5px 10px;font-size:11px">+ 과제 추가</button>
+    </div>
+    <div id="group-tasks-list"></div>
+
+    ${!isOwner?`<button class="btn btn-line" onclick="onLeaveGroup()" style="padding:10px;font-size:12px;color:var(--rose);border-color:var(--rose);width:100%;margin-top:18px">모임 나가기</button>`:`<button class="btn btn-line" onclick="onLeaveGroup()" style="padding:10px;font-size:12px;color:var(--rose);border-color:var(--rose);width:100%;margin-top:18px">모임 해체</button>`}
+  `;
+
+  renderGroupMembers(g);
+  renderGroupTasksList(g);
+}
+
+function renderGroupMembers(g){
+  const el = document.getElementById('group-members');
+  if(!el) return;
+  const isOwner = g.ownerUid===CU.uid;
+  el.innerHTML = (g.members||[]).map(m=>{
+    const isMe = m.uid===CU.uid;
+    const isMemberOwner = m.uid===g.ownerUid;
+    return `
+      <div style="background:var(--paper);border:1px solid var(--divider);border-radius:var(--r-md);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px">
+        <div style="width:34px;height:34px;border-radius:50%;background:var(--tc-mid);color:var(--terracotta);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">
+          ${(m.name||'?').charAt(0)}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px">
+            ${m.name||'?'} ${isMe?'<span style="font-size:9px;color:var(--ink4)">(나)</span>':''}
+            ${isMemberOwner?'<span style="font-size:9px;background:var(--terracotta);color:#fff;padding:1px 5px;border-radius:6px">리더</span>':''}
+          </div>
+          <div style="font-size:11px;color:var(--ink3)">${m.positionID||''} · 역할: ${m.role||'멤버'}</div>
+        </div>
+        ${isOwner && !isMemberOwner ? `
+          <button onclick="onChangeRole('${m.uid}','${m.role||'멤버'}')" style="background:none;border:none;color:var(--ink3);cursor:pointer;font-size:11px;padding:4px 6px">✏️</button>
+          <button onclick="onRemoveMember('${m.uid}','${(m.name||'').replace(/'/g,'')}')" style="background:none;border:none;color:var(--rose);cursor:pointer;font-size:11px;padding:4px 6px">✕</button>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderGroupTasksList(g){
+  const el = document.getElementById('group-tasks-list');
+  if(!el) return;
+  const tasksArr = g.groupTasks||[];
+  if(!tasksArr.length){
+    el.innerHTML = '<div style="text-align:center;color:var(--ink3);font-size:12px;padding:20px 10px">아직 공유 과제가 없습니다.</div>';
+    return;
+  }
+  el.innerHTML = tasksArr.map(t=>{
+    const myProg = (t.progressByUser||{})[CU.uid] || 0;
+    // 전체 평균 진행률 (담당자만 계산)
+    const assignees = t.assignees||[];
+    let avgProg = 0;
+    if(assignees.length){
+      const sum = assignees.reduce((acc,uid)=>acc + ((t.progressByUser||{})[uid]||0), 0);
+      avgProg = Math.round(sum/assignees.length);
+    }
+    const assigneeNames = assignees.map(uid=>{
+      const m = (g.members||[]).find(m=>m.uid===uid);
+      return m ? m.name||m.positionID : uid;
+    }).join(', ');
+    const iAmAssigned = assignees.includes(CU.uid);
+    const dlStr = t.deadline ? `📅 ${t.deadline.slice(5)}` : '마감일 없음';
+    const stars = '★'.repeat(Math.round(t.importance||0))+'☆'.repeat(5-Math.round(t.importance||0));
+    return `
+      <div style="background:var(--paper);border:1px solid var(--divider);border-radius:var(--r-md);padding:11px 13px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;margin-bottom:6px">
+          <div style="font-size:14px;font-weight:700;color:var(--ink);flex:1">${t.name}</div>
+          <button onclick="onDelGroupTask('${t.id}','${t.name.replace(/'/g,'')}')" style="background:none;border:none;color:var(--ink4);cursor:pointer;font-size:12px;flex-shrink:0">✕</button>
+        </div>
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:8px">${dlStr} · ⏱ ${t.hours||1}h · <span style="color:var(--gold)">${stars}</span></div>
+        ${t.memo?`<div style="font-size:11px;color:var(--ink3);padding:5px 7px;background:var(--paper3);border-radius:var(--r-xs);margin-bottom:8px">${t.memo}</div>`:''}
+        <div style="font-size:11px;color:var(--ink2);margin-bottom:4px">담당: ${assigneeNames||'없음'}</div>
+        ${assignees.length ? `<div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink3);margin-bottom:3px">
+            <span>팀 진행률</span><span style="font-weight:700;color:var(--terracotta)">${avgProg}%</span>
+          </div>
+          <div style="height:6px;background:var(--paper3);border-radius:3px;overflow:hidden">
+            <div style="height:100%;background:var(--terracotta);width:${avgProg}%;transition:width .3s"></div>
+          </div>
+        </div>` : ''}
+        ${iAmAssigned ? `<div style="background:var(--paper3);border-radius:var(--r-sm);padding:8px 10px;margin-top:6px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink2);margin-bottom:4px">
+            <span>내 진행률</span><span style="font-weight:700;color:var(--terracotta)">${myProg}%</span>
+          </div>
+          <input type="range" min="0" max="100" step="10" value="${myProg}" oninput="onUpdateMyProgress('${t.id}',this.value)" style="width:100%">
+        </div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+async function onChangeRole(memberUid, currentRole){
+  const newRole = prompt('새 역할을 입력하세요 (예: 디자인, 발표, 자료조사)', currentRole);
+  if(!newRole||!newRole.trim()) return;
+  if(await updateMemberRole(activeGroupId, memberUid, newRole.trim())){
+    toast('역할 변경 완료 ✓','ok');
+    renderGroupDetail();
+  }
+}
+
+async function onRemoveMember(memberUid, name){
+  if(!confirm(`"${name}"을(를) 모임에서 내보내시겠습니까?`)) return;
+  if(await removeMember(activeGroupId, memberUid)){
+    toast('멤버 추방됨');
+    renderGroupDetail();
+  }
+}
+
+async function onLeaveGroup(){
+  if(!confirm('정말 나가시겠습니까?')) return;
+  if(await leaveGroup(activeGroupId)){
+    activeGroupId = null;
+    toast('나갔습니다');
+    showPg('group');
+  }
+}
+
+async function onDelGroupTask(taskId, name){
+  if(!confirm(`"${name}" 과제를 삭제하시겠습니까?`)) return;
+  if(await delGroupTask(activeGroupId, taskId)){
+    toast('삭제됨');
+    renderGroupDetail();
+  }
+}
+
+async function onUpdateMyProgress(taskId, val){
+  await updateMyProgress(activeGroupId, taskId, parseInt(val));
+  // 시각적 즉시 갱신
+  renderGroupDetail();
+}
+
+/* ── 초대 모달 ── */
+function openInviteModal(){
+  document.getElementById('invite-modal-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'invite-modal-overlay';
+  overlay.style.cssText = `position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.25);
+    display:flex;align-items:center;justify-content:center;padding:20px`;
+  overlay.onclick = e=>{ if(e.target===overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div style="background:var(--paper2);border-radius:var(--r-lg);padding:20px 22px;
+                box-shadow:var(--shadow-lg);max-width:380px;width:100%">
+      <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:14px">멤버 초대</div>
+      <div class="fld">
+        <label>학번</label>
+        <input type="text" id="invite-pid" placeholder="예: 25-051">
+      </div>
+      <div class="fld" style="margin-top:10px">
+        <label>이름 (선택)</label>
+        <input type="text" id="invite-name" placeholder="홍길동">
+      </div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:6px">학번을 정확히 입력해주세요.</div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn btn-line" onclick="document.getElementById('invite-modal-overlay').remove()" style="flex:1;padding:11px">취소</button>
+        <button class="btn btn-main" onclick="submitInvite()" style="flex:1;padding:11px">초대 보내기</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(()=>document.getElementById('invite-pid')?.focus(),100);
+}
+
+async function submitInvite(){
+  const pid = document.getElementById('invite-pid').value.trim();
+  const name = document.getElementById('invite-name').value.trim();
+  if(!pid){ toast('학번을 입력해주세요','err'); return; }
+  if(await inviteToGroup(activeGroupId, pid, name)){
+    document.getElementById('invite-modal-overlay').remove();
+    toast('초대 보냈습니다 ✓','ok');
+    renderGroupDetail();
+  } else { toast('초대 실패','err'); }
+}
+
+/* ── 모임 과제 추가 모달 ── */
+function openGroupTaskModal(){
+  document.getElementById('gtask-modal-overlay')?.remove();
+  fetchGroup(activeGroupId).then(g=>{
+    if(!g) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'gtask-modal-overlay';
+    overlay.style.cssText = `position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.25);
+      display:flex;align-items:center;justify-content:center;padding:20px`;
+    overlay.onclick = e=>{ if(e.target===overlay) overlay.remove(); };
+
+    const memberOpts = (g.members||[]).map(m=>`
+      <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--paper);border-radius:var(--r-sm);margin-bottom:4px;cursor:pointer">
+        <input type="checkbox" name="gt-assignee" value="${m.uid}" style="width:16px;height:16px">
+        <span style="font-size:13px;color:var(--ink2)">${m.name||m.positionID}${m.uid===CU.uid?' (나)':''}</span>
+      </label>
+    `).join('');
+
+    overlay.innerHTML = `
+      <div style="background:var(--paper2);border-radius:var(--r-lg);padding:20px 22px;
+                  box-shadow:var(--shadow-lg);max-width:380px;width:100%;max-height:85vh;overflow-y:auto">
+        <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:14px">공유 과제 추가</div>
+        <div class="fld"><label>과제명</label><input type="text" id="gt-name" placeholder="예: 발표 자료 만들기"></div>
+        <div class="fld" style="margin-top:10px"><label>마감일</label><input type="date" id="gt-dl"></div>
+        <div class="fld" style="margin-top:10px"><label>예상 시간 (h)</label><input type="number" id="gt-hr" value="2" step="0.5" min="0.5"></div>
+        <div class="fld" style="margin-top:10px"><label>메모</label><input type="text" id="gt-memo" placeholder="(선택)"></div>
+        <div style="margin-top:14px;font-size:13px;font-weight:600;color:var(--ink2);margin-bottom:6px">담당자</div>
+        ${memberOpts}
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn btn-line" onclick="document.getElementById('gtask-modal-overlay').remove()" style="flex:1;padding:11px">취소</button>
+          <button class="btn btn-main" onclick="submitGroupTask()" style="flex:1;padding:11px">추가</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  });
+}
+
+async function submitGroupTask(){
+  const name = document.getElementById('gt-name').value.trim();
+  if(!name){ toast('과제명을 입력해주세요','err'); return; }
+  const dl = document.getElementById('gt-dl').value;
+  const hr = parseFloat(document.getElementById('gt-hr').value)||1;
+  const memo = document.getElementById('gt-memo').value.trim();
+  const assignees = [...document.querySelectorAll('[name="gt-assignee"]:checked')].map(c=>c.value);
+  if(await addGroupTask(activeGroupId, {name, deadline:dl, hours:hr, memo, assignees})){
+    document.getElementById('gtask-modal-overlay').remove();
+    toast('추가됨 ✓','ok');
+    renderGroupDetail();
+  } else toast('추가 실패','err');
 }
 
 // 내가 수강하는 분반의 다른 사람 공유 과제 조회
@@ -1832,14 +2451,15 @@ function rebuildAll(){rebuild();renderAll();}
 /* ══════════════════════════════════════
    CRUD
 ══════════════════════════════════════ */
-function addTask(sub,nm,dl,imp,hrs,memo,subjectCode,classSection){
+function addTask(sub,nm,dl,imp,hrs,memo,subjectCode,classSection,fromClassroom){
   const t={id:nid++,subject:sub,name:nm,deadline:dl,importance:imp,hours:hrs,memo,done:false,progress:0,score:0,createdAt:Date.now()};
   if(subjectCode) t.subjectCode = subjectCode;
   if(classSection) t.classSection = classSection;
+  if(fromClassroom) t.fromClassroom = true;
   t.score=calcScore(t);
   undoSt.push({type:'add',task:{...t},desc:`"${nm}" 추가`});redoSt.clear();
   tasks.push(t);markAct();rebuild();saveState();renderAll();
-  // 자동 공유 (KSAIN 과목인 경우만)
+  // 자동 공유 (KSAIN 과목인 경우만, Classroom 출처는 제외)
   if(isShareable(t)) shareTask(t);
   return t;
 }
@@ -1900,6 +2520,8 @@ function renderAll(){
   if(curPg==='home')renderHome();
   else if(curPg==='tasks')renderTasks();
   else if(curPg==='schedule')renderSchedule();
+  else if(curPg==='group')renderGroupTab();
+  else if(curPg==='group-detail')renderGroupDetail();
   else if(curPg==='dash')renderDash();
   else if(curPg==='viz')renderViz();
   else if(curPg==='timer')renderTimer();
@@ -2335,8 +2957,8 @@ function submitTask(){
     // 새 과제 등록
     if(!dl){toast('마감일을 입력해주세요','err');return;}
     const _meta = getSelectedSubjectMeta();
-    const _newT = addTask(sub,nm,dl,starV,hrs,memo,_meta?.code,_meta?.classSection);
-    if(window._sheetFromClassroom && _newT){ _newT.fromClassroom = true; saveState(); }
+    const _isClassroom = !!window._sheetFromClassroom;
+    addTask(sub,nm,dl,starV,hrs,memo,_meta?.code,_meta?.classSection,_isClassroom);
     window._sheetFromClassroom = false;
     closeSheet();toast('"'+nm+'" 추가됨 ✓','ok');
   }
@@ -2430,7 +3052,7 @@ function fmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60)
 function renderPomoDots(){const el=document.getElementById('pdots');if(!el)return;let h='';for(let i=0;i<8;i++){if(i===4)h+='<div style="width:6px"></div>';h+=`<div class="pd ${i<pomoC2%8?'on':''}"></div>`;}el.innerHTML=h;}
 
 /* NAV */
-const TITLES={home:'오늘의 학습',tasks:'과제 관리',schedule:'일정',dash:'현황',timer:'타이머',viz:'힙 뷰어',settings:'설정'};
+const TITLES={home:'오늘의 학습',tasks:'과제 관리',schedule:'일정',group:'모임','group-detail':'모임 상세',dash:'현황',viz:'힙 뷰어',settings:'설정'};
 let prevPg='home';
 function showPg(name){
   document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
@@ -2452,6 +3074,8 @@ function showPg(name){
   else if(name==='tasks')renderTasks();
   else if(name==='dash')renderDash();
   else if(name==='schedule')renderSchedule();
+  else if(name==='group')renderGroupTab();
+  else if(name==='group-detail')renderGroupDetail();
   else if(name==='viz'){renderViz();setTimeout(renderViz,80);}
   else if(name==='timer')renderTimer();
   else if(name==='settings')renderSettings();
