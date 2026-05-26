@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.0.2 · 2026-05-24
+    v3.0.3 · 2026-05-24
   </div>
 </div>
 
@@ -1560,12 +1560,12 @@ async function acceptInvite(groupId){
     const pending = (data.pendingInvites||[]).find(p=>p.positionID===CU.positionID);
     if(!pending) return false;
     // pendingInvites에서 제거
-    const newPending = data.pendingInvites.filter(p=>p.uid!==CU.uid);
-    const newInviteUids = (data.inviteUids||[]).filter(u=>u!==CU.uid);
-    // members에 추가
-    const newMember = {uid:CU.uid, name:CU.name, positionID:CU.positionID, role:'멤버', joinedAt:Date.now()};
+    const newPending = data.pendingInvites.filter(p=>p.positionID!==CU.positionID);
+    const newInviteUids = (data.inviteUids||[]).filter(u=>u!==CU.positionID);
+    // members에 추가 (학번을 uid로 사용)
+    const newMember = {uid:CU.positionID, name:CU.name, positionID:CU.positionID, role:'멤버', joinedAt:Date.now()};
     const newMembers = [...(data.members||[]), newMember];
-    const newMemberUids = [...(data.memberUids||[]), CU.uid];
+    const newMemberUids = [...(data.memberUids||[]), CU.positionID];
     await window._fsSetDoc(ref, {...data, pendingInvites:newPending, inviteUids:newInviteUids, members:newMembers, memberUids:newMemberUids});
     return true;
   }catch(e){ console.error('accept:',e); return false; }
