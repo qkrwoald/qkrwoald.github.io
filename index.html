@@ -765,7 +765,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.1.1 · 2026-05-24
+    v3.2.0 · 2026-05-24
   </div>
 </div>
 
@@ -1101,6 +1101,34 @@ canvas{width:100%;display:block;}
         </div>
       </div>
 
+
+      <!-- 자동 배치 설정 -->
+      <div class="sec">자동 배치 설정</div>
+      <div class="set-section">
+        <div class="set-section-hd">생활 시간을 설정하면 자동 배치 시 반영됩니다.</div>
+        <div class="set-select-row">
+          <label>취침 시작</label>
+          <input type="time" id="st-sleep-start" onchange="applyS('sleepStart',this.value)" style="font-family:var(--f-mono);padding:7px 10px;border:1px solid var(--divider);border-radius:var(--r-lg);background:var(--paper);color:var(--ink);font-size:14px">
+        </div>
+        <div class="set-select-row">
+          <label>기상 시간</label>
+          <input type="time" id="st-sleep-end" onchange="applyS('sleepEnd',this.value)" style="font-family:var(--f-mono);padding:7px 10px;border:1px solid var(--divider);border-radius:var(--r-lg);background:var(--paper);color:var(--ink);font-size:14px">
+        </div>
+        <div class="set-toggle-row">
+          <div>
+            <div class="set-toggle-label">식사 시간에도 과제 배치</div>
+            <div class="set-toggle-desc">점심 11:30~13:30 / 저녁 17:30~18:30</div>
+          </div>
+          <button class="tgl" id="tgl-mealtime" onclick="toggleSetting('useMealTime',this)"></button>
+        </div>
+        <div class="set-toggle-row">
+          <div>
+            <div class="set-toggle-label">자습시간 우선 배치</div>
+            <div class="set-toggle-desc">저녁 자습 19:30~21:30을 먼저 채움</div>
+          </div>
+          <button class="tgl on" id="tgl-studyprio" onclick="toggleSetting('studyPriority',this)"></button>
+        </div>
+      </div>
 
       <!-- 시간표 동기화 -->
       <div class="sec">시간표 동기화</div>
@@ -2375,7 +2403,7 @@ let timerIv=null,timerSecs=25*60,timerTotal=25*60,timerRunning=false,timerMins=2
 let pomoC=0,pomoC2=0,focusId=null;
 const CIRC=2*Math.PI*74;
 
-let S={theme:'light',accent:'',fontSize:15,w1:.5,w2:.3,w3:.2,pomoDur:25,breakDur:5,vibrate:true,showAI:true,showScore:true,showDone:true,defaultSort:'priority',alarmOn:true,alarm1day:true,alarm3h:true,alarm1h:true,gmailLinked:false,gmailPwEnc:'',gmailSkipped:false,scheduleStartMode:'today'};
+let S={theme:'light',accent:'',fontSize:15,w1:.5,w2:.3,w3:.2,pomoDur:25,breakDur:5,vibrate:true,showAI:true,showScore:true,showDone:true,defaultSort:'priority',alarmOn:true,alarm1day:true,alarm3h:true,alarm1h:true,gmailLinked:false,gmailPwEnc:'',gmailSkipped:false,scheduleStartMode:'today',sleepStart:'23:00',sleepEnd:'07:00',useMealTime:false,studyPriority:true};
 
 const SCOLS=['#5B7B5A','#4A6580','#B8932A','#C0535A','#7B6FA0','#2D8F76','#A07040'];
 let scmap={},scidx=0;
@@ -2867,6 +2895,12 @@ async function fetchAI(sorted){
 
 /* SETTINGS LOGIC */
 function applyS(k,v){S[k]=v;applyTheme();saveState();}
+function toggleSetting(key, btn){
+  const newVal = !btn.classList.contains('on');
+  btn.classList.toggle('on', newVal);
+  S[key] = newVal;
+  saveState();
+}
 function toggleS(k,btn){S[k]=!S[k];btn.classList.toggle('on',!!S[k]);saveState();renderAll();}
 function applyAccent(el){
   const a=el.dataset.a;S.accent=a;
@@ -2893,6 +2927,10 @@ function applyTheme(){
   if(S.accent)document.documentElement.dataset.accent=S.accent;else delete document.documentElement.dataset.accent;
   const ds=document.getElementById('st-dsort');if(ds)ds.value=S.defaultSort||'priority';
   const sm=document.getElementById('st-schedmode');if(sm)sm.value=S.scheduleStartMode||'today';
+  const ss=document.getElementById('st-sleep-start');if(ss)ss.value=S.sleepStart||'23:00';
+  const se=document.getElementById('st-sleep-end');if(se)se.value=S.sleepEnd||'07:00';
+  const tm=document.getElementById('tgl-mealtime');if(tm)tm.classList.toggle('on',!!S.useMealTime);
+  const tp=document.getElementById('tgl-studyprio');if(tp)tp.classList.toggle('on',S.studyPriority!==false);
 }
 
 /* SHEET */
@@ -4028,67 +4066,136 @@ function dateToDayKey(d){
   return days[d.getDay()];
 }
 
+// 시간 문자열 "HH:MM" → 분
+function timeStrToMin(t){
+  if(!t) return 0;
+  const [h,m] = t.split(':').map(Number);
+  return h*60+(m||0);
+}
+
+// 자동 배치용 "추가 제외 시간" 구간 반환
+// (취침, 식사 등) - findFreeSlots와는 별도로, 빈 슬롯을 한 번 더 잘라낼 때 사용
+function getExcludedRanges(opts){
+  const ranges = [];
+  // 취침 시간
+  const sleepStart = timeStrToMin(opts.sleepStart || '23:00');
+  const sleepEnd = timeStrToMin(opts.sleepEnd || '07:00');
+  if(sleepStart < sleepEnd){
+    ranges.push({start: sleepStart, end: sleepEnd, label:'취침'});
+  } else {
+    // 자정을 넘는 경우 (예: 23:00 ~ 07:00)
+    ranges.push({start: 0, end: sleepEnd, label:'취침'});
+    ranges.push({start: sleepStart, end: 24*60, label:'취침'});
+  }
+  // 식사 시간 (사용 안 하면 추가)
+  if(!opts.useMealTime){
+    ranges.push({start: 11*60+30, end: 13*60+30, label:'점심'});
+    ranges.push({start: 17*60+30, end: 18*60+30, label:'저녁'});
+  }
+  return ranges;
+}
+
+// 빈 슬롯에서 제외 구간을 빼서 잘게 나누기
+function subtractRanges(slots, excluded){
+  let result = [...slots];
+  for(const ex of excluded){
+    const newResult = [];
+    for(const s of result){
+      if(ex.end <= s.start || ex.start >= s.end){
+        newResult.push(s);
+      } else {
+        if(s.start < ex.start) newResult.push({start:s.start, end:ex.start});
+        if(s.end > ex.end) newResult.push({start:ex.end, end:s.end});
+      }
+    }
+    result = newResult;
+  }
+  return result.filter(s=>s.end-s.start >= AUTO_PLACE_MIN_SLOT);
+}
+
+// 슬롯 우선순위 점수 (자습시간 우선이면 자습 시간대에 가산)
+function slotPriority(slot, opts){
+  // 자습시간: 19:30~21:30
+  const studyStart = 19*60+30;
+  const studyEnd = 21*60+30;
+  if(opts.studyPriority){
+    // 슬롯이 자습 시간과 겹치는 분량만큼 가산
+    const overlap = Math.max(0, Math.min(slot.end, studyEnd) - Math.max(slot.start, studyStart));
+    return overlap;
+  }
+  return 0;
+}
+
 // 자동 배치 메인 함수
-// 입력: 배치할 task 리스트
-// 동작: scheduledBlocks에 직접 추가
-// 반환: {placed: 배치된 과제 수, failed: 실패한 과제 이름 리스트}
-function autoPlaceTasks(taskList){
+function autoPlaceTasks(taskList, opts){
+  opts = opts || {};
+  // 옵션 기본값 채우기 (S에서 불러오기)
+  opts.sleepStart = opts.sleepStart ?? S.sleepStart ?? '23:00';
+  opts.sleepEnd = opts.sleepEnd ?? S.sleepEnd ?? '07:00';
+  opts.useMealTime = opts.useMealTime ?? S.useMealTime ?? false;
+  opts.studyPriority = opts.studyPriority ?? S.studyPriority ?? true;
+
+  const excluded = getExcludedRanges(opts);
+
   let placedCount = 0;
   const failed = [];
 
-  // 점수 내림차순
   const sorted = [...taskList].sort((a,b)=>(b.score||0)-(a.score||0));
 
   for(const t of sorted){
     if(!t.deadline){ failed.push(t.name+' (마감일 없음)'); continue; }
 
-    // 필요한 총 분 (10분 단위로 올림)
     let needMin = Math.ceil((t.hours||1)*60/AUTO_PLACE_STEP)*AUTO_PLACE_STEP;
     if(needMin <= 0) needMin = AUTO_PLACE_STEP;
 
-    // 사용 가능 날짜들 순회
     const dates = getAvailableDates(t.deadline);
-    const remainingChunks = []; // 분할된 조각들 임시 저장
-
     let remaining = needMin;
 
-    outer:
+    // 모든 날짜의 빈 슬롯 수집 (점수 매겨서 정렬)
+    // 자습시간 우선이면 자습 슬롯이 더 높은 점수
+    const allSlots = [];
     for(const date of dates){
       if(remaining <= 0) break;
       const day = dateToDayKey(date);
       const dateStr = date.toISOString().slice(0,10);
-      const freeSlots = findFreeSlots(day, dateStr);
-
-      for(const slot of freeSlots){
-        if(remaining <= 0) break;
-        const slotLen = slot.end - slot.start;
-        if(slotLen < AUTO_PLACE_MIN_SLOT) continue;
-        // 이 슬롯에 들어갈 양: min(remaining, slotLen)
-        const placeAmt = Math.min(remaining, slotLen);
-        const blockStart = slot.start;
-        const blockEnd = blockStart + placeAmt;
-
-        // 30분 미만 조각은 건너뜀 (마지막에 너무 작은 조각 안 생기게)
-        if(placeAmt < AUTO_PLACE_MIN_SLOT) continue;
-
-        // 배치
-        const newBlock = {
-          id: blockIdCounter++,
-          taskId: t.id,
-          day, dateStr,
-          startMin: blockStart,
-          endMin: blockEnd,
-          auto: true
-        };
-        scheduledBlocks.push(newBlock);
-        remaining -= placeAmt;
+      let freeSlots = findFreeSlots(day, dateStr);
+      // 제외 구간 적용
+      freeSlots = subtractRanges(freeSlots, excluded);
+      for(const s of freeSlots){
+        allSlots.push({...s, day, dateStr, date});
       }
+    }
+
+    // 정렬: 자습 우선 + 날짜 빠른 순
+    allSlots.sort((a,b)=>{
+      const pa = slotPriority(a, opts);
+      const pb = slotPriority(b, opts);
+      if(pa !== pb) return pb - pa; // 자습시간 점수 높은 게 먼저
+      return a.date - b.date;        // 같으면 빠른 날짜 먼저
+    });
+
+    for(const slot of allSlots){
+      if(remaining <= 0) break;
+      const slotLen = slot.end - slot.start;
+      if(slotLen < AUTO_PLACE_MIN_SLOT) continue;
+      const placeAmt = Math.min(remaining, slotLen);
+      if(placeAmt < AUTO_PLACE_MIN_SLOT) continue;
+
+      scheduledBlocks.push({
+        id: blockIdCounter++,
+        taskId: t.id,
+        day: slot.day,
+        dateStr: slot.dateStr,
+        startMin: slot.start,
+        endMin: slot.start + placeAmt,
+        auto: true
+      });
+      remaining -= placeAmt;
     }
 
     if(remaining <= 0){
       placedCount++;
     } else {
-      // 전체를 배치 못 함 → 일부라도 배치된 게 있으면 OK로 표시, 아니면 failed
       const partialMin = needMin - remaining;
       if(partialMin > 0){
         failed.push(`${t.name} (${formatMin(partialMin)} 배치 / ${formatMin(needMin)} 필요)`);
@@ -4160,7 +4267,18 @@ function openAutoPlaceModal(){
       <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">✨ 자동 배치</div>
       <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">
         선택한 과제를 마감일까지의 빈 시간에 자동으로 채워넣습니다.<br>
-        <span style="color:var(--ink4)">우선순위 점수가 높은 과제 먼저 · 30분 이상 빈 시간만 사용 · 기존 배치는 보존</span>
+        <span style="color:var(--ink4)">점수 높은 과제 먼저 · 30분 이상 빈 시간만 · 기존 배치 보존</span>
+      </div>
+
+      <!-- 시간 옵션 안내 -->
+      <div style="background:var(--paper3);border-radius:var(--r-md);padding:10px 12px;margin-bottom:14px">
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:6px">⏰ 현재 시간 설정</div>
+        <div style="font-size:12px;color:var(--ink2);line-height:1.6">
+          <div>🌙 취침: <span style="font-family:var(--f-mono);font-weight:600">${S.sleepStart||'23:00'} ~ ${S.sleepEnd||'07:00'}</span></div>
+          <div>🍽 식사 시간 배치: ${S.useMealTime?'<span style="color:var(--terracotta);font-weight:600">사용</span>':'<span style="color:var(--ink3)">사용 안 함</span>'}</div>
+          <div>📚 자습 시간 우선: ${S.studyPriority!==false?'<span style="color:var(--terracotta);font-weight:600">19:30~21:30 먼저 채움</span>':'<span style="color:var(--ink3)">사용 안 함</span>'}</div>
+        </div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:6px">설정에서 변경할 수 있습니다.</div>
       </div>
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
