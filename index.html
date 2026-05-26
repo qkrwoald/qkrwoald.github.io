@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.9.2 · 2026-05-24
+    v2.9.3 · 2026-05-24
   </div>
 </div>
 
@@ -1682,10 +1682,10 @@ async function doKsainLogin(){
       isAdmin:true
     };
     saveSession(s);
-    // admin용 더미 KSAIN 과목 강제 설정
+    // admin용 더미 KSAIN 과목 강제 설정 (실제 KSAIN 코드 사용)
     saveKsainSubjects([
-      {code:'CS-DS', name:'자료구조', engName:'Data Structures', classSection:1, teacher:'관리자'},
-      {code:'HA-LIT', name:'문학', engName:'Literature', classSection:3, teacher:'관리자'}
+      {code:'MC4205', name:'자료구조', engName:'Data Structures', classSection:1, teacher:'관리자'},
+      {code:'HA1116', name:'문학', engName:'Literature', classSection:3, teacher:'관리자'}
     ]);
     pwInput.value='';
     initApp(s);
