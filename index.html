@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.7.8 · 2026-05-24
+    v2.7.9 · 2026-05-24
   </div>
 </div>
 
@@ -3179,6 +3179,8 @@ function onDragEnd(e){
         day, dateStr,
         startMin: slotMin, endMin
       });
+      // 같은 과제의 인접한 블록과 자동 병합
+      mergeAdjacentBlocks(dragState.taskId, day, dateStr);
       placed = true;
       toast('배치됨 ✓','ok');
     } else if(conflict==='class'){ toast('수업 시간과 겹칩니다','err'); }
@@ -3227,17 +3229,22 @@ function removeBlock(id){
 // 같은 과제의 인접한 블록 자동 병합 (같은 날짜에 한정)
 function mergeAdjacentBlocks(taskId, day, dateStr){
   let merged = true;
-  while(merged){
+  let iterations = 0;
+  while(merged && iterations<20){
     merged = false;
-    // 같은 task + 같은 날짜 블록 모두 모으기
-    const same = scheduledBlocks.filter(b=>b.taskId===taskId && b.day===day && b.dateStr===dateStr);
-    same.sort((a,b)=>a.startMin-b.startMin);
+    iterations++;
+    // 같은 task + 같은 날짜 블록 모두 모으기 (원본 참조)
+    const same = scheduledBlocks
+      .filter(b=>b.taskId===taskId && b.day===day && b.dateStr===dateStr)
+      .sort((a,b)=>a.startMin-b.startMin);
     for(let i=0;i<same.length-1;i++){
       const a = same[i], b = same[i+1];
       if(a.endMin === b.startMin){
-        // 두 블록 병합 가능: a 확장, b 제거
+        // a의 endMin을 b의 endMin으로 확장 (a는 scheduledBlocks의 원본 참조)
         a.endMin = b.endMin;
-        scheduledBlocks = scheduledBlocks.filter(x=>x.id!==b.id);
+        // b를 scheduledBlocks에서 제거
+        const bid = b.id;
+        scheduledBlocks = scheduledBlocks.filter(x=>x.id!==bid);
         merged = true;
         break;
       }
@@ -3259,20 +3266,20 @@ function showBlockMenu(block, x, y){
   overlay.onclick = e=>{ if(e.target===overlay) closeBlockMenu(); };
 
   overlay.innerHTML = `
-    <div style="background:var(--paper2);border-radius:var(--r-md);padding:18px 20px;
+    <div style="background:var(--paper2);border-radius:var(--r-lg);padding:20px 22px;
                 box-shadow:var(--shadow-lg);max-width:340px;width:100%">
       <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">${t.name}</div>
       <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">
-        ${minToTime(block.startMin)}~${minToTime(block.endMin)} · ${(totalMin/60).toFixed(1)}시간
+        ${minToTime(block.startMin)}~${minToTime(block.endMin)} · ${formatMin(totalMin)}
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <button class="btn btn-line" onclick="openSplitModal(${block.id})" style="padding:11px;font-size:13px">
+        <button class="btn btn-line" onclick="openSplitModal(${block.id})" style="padding:11px;font-size:13px;border-radius:var(--r-lg)">
           ✂ 분할하여 배치
         </button>
-        <button class="btn btn-line" onclick="removeBlock(${block.id});closeBlockMenu()" style="padding:11px;font-size:13px;color:var(--rose);border-color:var(--rose)">
+        <button class="btn btn-line" onclick="removeBlock(${block.id});closeBlockMenu()" style="padding:11px;font-size:13px;color:var(--rose);border-color:var(--rose);border-radius:var(--r-lg)">
           🗑 일정에서 제거
         </button>
-        <button class="btn btn-line" onclick="closeBlockMenu()" style="padding:11px;font-size:13px;color:var(--ink3)">
+        <button class="btn btn-line" onclick="closeBlockMenu()" style="padding:11px;font-size:13px;color:var(--ink3);border-radius:var(--r-lg)">
           취소
         </button>
       </div>
@@ -3420,7 +3427,7 @@ function renderSplitModal(taskName){
   overlay.onclick = e=>{ if(e.target===overlay) closeBlockMenu(); };
 
   overlay.innerHTML = `
-    <div style="background:var(--paper2);border-radius:var(--r-md);padding:18px 20px;
+    <div style="background:var(--paper2);border-radius:var(--r-lg);padding:20px 22px;
                 box-shadow:var(--shadow-lg);max-width:420px;width:100%;max-height:85vh;overflow-y:auto">
       <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">✂ ${taskName} 분할</div>
       <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">
