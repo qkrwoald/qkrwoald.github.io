@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.7.10 · 2026-05-24
+    v2.8.0 · 2026-05-24
   </div>
 </div>
 
@@ -1146,7 +1146,8 @@ canvas{width:100%;display:block;}
       </div>
 
       <!-- 과목 관리 -->
-      <div class="sec">과목 관리</div>
+      <div class="sec">추가 과목 관리</div>
+      <div style="font-size:11px;color:var(--ink3);margin:-4px 0 6px">KSAIN 수강 과목 외에 추가하고 싶은 과목 (예: 자율 활동)</div>
       <div class="set-section">
         <div class="set-section-hd">과목 목록 (드롭다운에 표시)</div>
         <div id="subject-list-ui" style="padding:10px 0"></div>
@@ -1581,8 +1582,10 @@ function rebuildAll(){rebuild();renderAll();}
 /* ══════════════════════════════════════
    CRUD
 ══════════════════════════════════════ */
-function addTask(sub,nm,dl,imp,hrs,memo){
+function addTask(sub,nm,dl,imp,hrs,memo,subjectCode,classSection){
   const t={id:nid++,subject:sub,name:nm,deadline:dl,importance:imp,hours:hrs,memo,done:false,progress:0,score:0,createdAt:Date.now()};
+  if(subjectCode) t.subjectCode = subjectCode;
+  if(classSection) t.classSection = classSection;
   t.score=calcScore(t);
   undoSt.push({type:'add',task:{...t},desc:`"${nm}" 추가`});redoSt.clear();
   tasks.push(t);markAct();rebuild();saveState();renderAll();return t; // saveState는 비동기이므로 저장 실패해도 localStorage에 백업됨
@@ -1847,26 +1850,64 @@ function renderUndoDots(){
   const c=document.getElementById('ucnt');if(c)c.textContent=undoSt.size()+'단계';
 }
 
-// 고정 과목 리스트
-const DEFAULT_SUBJECTS = ['자료구조', '물리학및실험2'];
-function getCustomSubjects(){ try{ return JSON.parse(localStorage.getItem('sq_subjects')||'null') || [...DEFAULT_SUBJECTS]; }catch{ return [...DEFAULT_SUBJECTS]; } }
+// 사용자 정의 과목 (KSAIN에 없는 활동용)
+function getCustomSubjects(){ try{ return JSON.parse(localStorage.getItem('sq_subjects')||'[]') || []; }catch{ return []; } }
 function saveCustomSubjects(list){ localStorage.setItem('sq_subjects', JSON.stringify(list)); }
+
+// KSAIN 수강 과목 [{code, name, classSection}]
+function getKsainSubjects(){ try{ return JSON.parse(localStorage.getItem('sq_ksain_subjects')||'[]') || []; }catch{ return []; } }
+function saveKsainSubjects(list){ localStorage.setItem('sq_ksain_subjects', JSON.stringify(list)); }
+
+// 통합 과목 목록 (KSAIN 우선, 그 다음 사용자 정의)
+// 반환: [{name, source:'ksain'|'custom', code?, classSection?}]
+function getAllSubjects(){
+  const ksain = getKsainSubjects().map(k=>({
+    name: k.name,
+    source: 'ksain',
+    code: k.code,
+    classSection: k.classSection
+  }));
+  const custom = getCustomSubjects().map(s=>({name:s, source:'custom'}));
+  // 중복 제거 (KSAIN 우선)
+  const ksainNames = new Set(ksain.map(k=>k.name));
+  const filteredCustom = custom.filter(c=>!ksainNames.has(c.name));
+  return [...ksain, ...filteredCustom];
+}
 
 function updSubjDL(){
   const dl=document.getElementById('subdl');if(!dl)return;
+  const all = getAllSubjects().map(s=>s.name);
   const taskSubjects=[...new Set(tasks.map(t=>t.subject).filter(Boolean))];
-  const all=[...new Set([...getCustomSubjects(), ...taskSubjects])];
-  dl.innerHTML=all.map(s=>`<option value="${s}">`).join('');
-  // select도 업데이트
+  const uniq=[...new Set([...all, ...taskSubjects])];
+  dl.innerHTML=uniq.map(s=>`<option value="${s}">`).join('');
   updSubjectSelect();
 }
 function updSubjectSelect(){
   const sel=document.getElementById('f-sub-select');if(!sel)return;
   const cur=sel.value;
-  const subjects=getCustomSubjects();
-  sel.innerHTML=`<option value="">— 과목 선택 —</option>`+
-    subjects.map(s=>`<option value="${s}">${s}</option>`).join('')+
-    `<option value="__direct__">직접 입력</option>`;
+  const ksain = getKsainSubjects();
+  const custom = getCustomSubjects();
+  const ksainNames = new Set(ksain.map(k=>k.name));
+  const filteredCustom = custom.filter(c=>!ksainNames.has(c));
+
+  let html = `<option value="">— 과목 선택 —</option>`;
+  if(ksain.length){
+    html += `<optgroup label="📚 내 수강 과목">`;
+    ksain.forEach(k=>{
+      const label = `${k.name}${k.classSection?' ('+k.classSection+'분반)':''}`;
+      html += `<option value="${k.name}" data-source="ksain" data-code="${k.code||''}" data-section="${k.classSection||''}">${label}</option>`;
+    });
+    html += `</optgroup>`;
+  }
+  if(filteredCustom.length){
+    html += `<optgroup label="✏️ 추가 과목">`;
+    filteredCustom.forEach(s=>{
+      html += `<option value="${s}" data-source="custom">${s}</option>`;
+    });
+    html += `</optgroup>`;
+  }
+  html += `<option value="__direct__">직접 입력</option>`;
+  sel.innerHTML = html;
   if(cur) sel.value=cur;
 }
 
@@ -1887,6 +1928,18 @@ function onSubjectSelect(val){
   updateSP();
 }
 
+// 현재 선택된 과목의 KSAIN 메타데이터 가져오기 (code, classSection)
+function getSelectedSubjectMeta(){
+  const select=document.getElementById('f-sub-select');
+  if(!select) return null;
+  const opt = select.options[select.selectedIndex];
+  if(!opt || opt.dataset.source!=='ksain') return null;
+  return {
+    code: opt.dataset.code || null,
+    classSection: opt.dataset.section ? parseInt(opt.dataset.section) : null
+  };
+}
+
 function setSubjectValue(val){
   const select=document.getElementById('f-sub-select');
   const input=document.getElementById('f-sub');
@@ -1896,9 +1949,9 @@ function setSubjectValue(val){
     input.value='';
     return;
   }
-  // 고정 목록에 있으면 select로, 없으면 직접입력
-  const inFixed = getCustomSubjects().includes(val);
-  if(inFixed){
+  // 목록(KSAIN + custom)에 있으면 select로, 없으면 직접입력
+  const allNames = getAllSubjects().map(s=>s.name);
+  if(allNames.includes(val)){
     select.value=val;
     input.style.display='none';
     input.value=val;
@@ -2009,6 +2062,10 @@ function submitTask(){
     if(t){
       undoSt.push({type:'edit',prev:{...t},desc:`"${t.name}" 수정`});redoSt.clear();
       t.subject=sub; t.name=nm; t.deadline=dl||''; t.hours=hrs; t.importance=starV; t.memo=memo;
+      // KSAIN 과목 메타 저장
+      const _meta = getSelectedSubjectMeta();
+      if(_meta){ t.subjectCode = _meta.code; t.classSection = _meta.classSection; }
+      else { delete t.subjectCode; delete t.classSection; }
       t.score=calcScore(t);
     }
     rebuild();saveState();renderAll();
@@ -2016,7 +2073,8 @@ function submitTask(){
   } else {
     // 새 과제 등록
     if(!dl){toast('마감일을 입력해주세요','err');return;}
-    addTask(sub,nm,dl,starV,hrs,memo);closeSheet();toast('"'+nm+'" 추가됨 ✓','ok');
+    const _meta = getSelectedSubjectMeta();
+    addTask(sub,nm,dl,starV,hrs,memo,_meta?.code,_meta?.classSection);closeSheet();toast('"'+nm+'" 추가됨 ✓','ok');
   }
 }
 function renderStarSVG(containerId, val, onClickFn){
@@ -2541,6 +2599,13 @@ async function initApp(session){
   document.getElementById('app').style.display='block';
   loadTimetableFromStorage();
 
+  // 마이그레이션: 예전 기본 과목(자료구조, 물리학및실험2)이 사용자 정의에 들어있으면 제거
+  try{
+    const existing = getCustomSubjects();
+    const cleaned = existing.filter(s=>s!=='자료구조' && s!=='물리학및실험2');
+    if(cleaned.length !== existing.length) saveCustomSubjects(cleaned);
+  }catch(e){}
+
   // 기존 세션에 positionID가 없으면 가져와서 이메일 보정
   if(!CU.positionID && CU.ksainToken){
     try{
@@ -2683,6 +2748,27 @@ function convertKsainTimetable(items){
 }
 
 // KSAIN에서 시간표 가져오기
+// 시간표 응답에서 수강 과목 추출 (code+section 단위로 unique)
+function extractKsainSubjects(items){
+  const seen = new Set();
+  const subjects = [];
+  for(const it of items){
+    const key = `${it.code}_${it.classSection}`;
+    if(seen.has(key)) continue;
+    seen.add(key);
+    subjects.push({
+      code: it.code,
+      name: it.courseName,
+      engName: it.courseEngName,
+      classSection: it.classSection,
+      teacher: it.teacher
+    });
+  }
+  // 이름순 정렬
+  subjects.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  return subjects;
+}
+
 async function syncKsainTimetable(){
   if(!CU?.ksainToken){ toast('KSAIN 로그인이 필요합니다','err'); return; }
   try{
@@ -2700,8 +2786,13 @@ async function syncKsainTimetable(){
     }
     TIMETABLE = convertKsainTimetable(data.timetable||[]);
     saveTimetableToStorage();
+    // 수강 과목 목록도 같이 저장
+    const subjects = extractKsainSubjects(data.timetable||[]);
+    saveKsainSubjects(subjects);
+    // 과목 드롭다운 갱신
+    updSubjDL();
     if(curPg==='schedule') renderSchedule();
-    toast('시간표 동기화 완료 ✓','ok');
+    toast(`시간표 + ${subjects.length}개 과목 동기화 완료 ✓`,'ok');
   }catch(e){
     console.error('Timetable sync error:',e);
     toast('네트워크 오류','err');
