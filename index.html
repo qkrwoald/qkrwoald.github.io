@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.0.2 · 2026-05-24
+    v3.0.1 · 2026-05-24
   </div>
 </div>
 
@@ -1470,7 +1470,7 @@ async function fetchMyGroups(){
   if(!window._db || !CU) return [];
   try{
     const col = window._fsCollection(window._db, 'groups');
-    const q = window._fsQuery(col, window._fsWhere('memberUids','array-contains',CU.uid));
+    const q = window._fsQuery(col, window._fsWhere('memberUids','array-contains',CU.positionID));
     const snap = await window._fsGetDocs(q);
     const groups = [];
     snap.forEach(d=>groups.push({id:d.id, ...d.data()}));
@@ -1484,12 +1484,12 @@ async function fetchMyInvites(){
   if(!window._db || !CU) return [];
   try{
     const col = window._fsCollection(window._db, 'groups');
-    const q = window._fsQuery(col, window._fsWhere('inviteUids','array-contains',CU.uid));
+    const q = window._fsQuery(col, window._fsWhere('inviteUids','array-contains',CU.positionID));
     const snap = await window._fsGetDocs(q);
     const invites = [];
     snap.forEach(d=>{
       const data = d.data();
-      const pending = (data.pendingInvites||[]).find(p=>p.uid===CU.uid);
+      const pending = (data.pendingInvites||[]).find(p=>p.positionID===CU.positionID);
       if(pending){
         invites.push({groupId:d.id, groupName:data.name, inviterName:data.ownerName, invitedAt:pending.invitedAt});
       }
@@ -1509,13 +1509,13 @@ async function createGroup(name){
     ownerName: CU.name,
     ownerPositionID: CU.positionID,
     members: [{
-      uid: CU.uid,
+      uid: CU.positionID,  // 학번을 ID로 통일
       name: CU.name,
       positionID: CU.positionID,
       role: '리더',
       joinedAt: Date.now()
     }],
-    memberUids: [CU.uid],
+    memberUids: [CU.positionID],  // 학번 기반
     pendingInvites: [],
     inviteUids: [],
     groupTasks: [],
@@ -1557,7 +1557,7 @@ async function acceptInvite(groupId){
     const snap = await window._fsGetDoc(ref);
     if(!snap.exists()) return false;
     const data = snap.data();
-    const pending = (data.pendingInvites||[]).find(p=>p.uid===CU.uid);
+    const pending = (data.pendingInvites||[]).find(p=>p.positionID===CU.positionID);
     if(!pending) return false;
     // pendingInvites에서 제거
     const newPending = data.pendingInvites.filter(p=>p.uid!==CU.uid);
@@ -1579,8 +1579,8 @@ async function rejectInvite(groupId){
     const snap = await window._fsGetDoc(ref);
     if(!snap.exists()) return false;
     const data = snap.data();
-    const newPending = (data.pendingInvites||[]).filter(p=>p.uid!==CU.uid);
-    const newInviteUids = (data.inviteUids||[]).filter(u=>u!==CU.uid);
+    const newPending = (data.pendingInvites||[]).filter(p=>p.positionID!==CU.positionID);
+    const newInviteUids = (data.inviteUids||[]).filter(u=>u!==CU.positionID);
     await window._fsSetDoc(ref, {...data, pendingInvites:newPending, inviteUids:newInviteUids});
     return true;
   }catch(e){ console.error('reject:',e); return false; }
@@ -1600,8 +1600,8 @@ async function leaveGroup(groupId){
       await window._fsDeleteDoc(ref);
       return true;
     }
-    const newMembers = (data.members||[]).filter(m=>m.uid!==CU.uid);
-    const newMemberUids = (data.memberUids||[]).filter(u=>u!==CU.uid);
+    const newMembers = (data.members||[]).filter(m=>m.uid!==CU.positionID);
+    const newMemberUids = (data.memberUids||[]).filter(u=>u!==CU.positionID);
     await window._fsSetDoc(ref, {...data, members:newMembers, memberUids:newMemberUids});
     return true;
   }catch(e){ console.error('leave:',e); return false; }
@@ -1631,7 +1631,7 @@ async function addGroupTask(groupId, taskData){
     memo: taskData.memo||'',
     assignees: taskData.assignees||[], // [uid]
     progressByUser: {}, // {uid: 0~100}
-    createdBy: CU.uid,
+    createdBy: CU.positionID,
     createdAt: Date.now()
   };
   const newTasks = [...(g.groupTasks||[]), newTask];
@@ -1661,7 +1661,7 @@ async function updateMyProgress(groupId, taskId, progress){
   const tasksArr = g.groupTasks||[];
   const idx = tasksArr.findIndex(t=>t.id===taskId);
   if(idx<0) return false;
-  tasksArr[idx].progressByUser = {...(tasksArr[idx].progressByUser||{}), [CU.uid]:progress};
+  tasksArr[idx].progressByUser = {...(tasksArr[idx].progressByUser||{}), [CU.positionID]:progress};
   try{
     const ref = window._fsDoc(window._db, 'groups', groupId);
     await window._fsSetDoc(ref, {...g, groupTasks:tasksArr});
@@ -1868,7 +1868,7 @@ function renderGroupMembers(g){
   if(!el) return;
   const isOwner = g.ownerUid===CU.uid;
   el.innerHTML = (g.members||[]).map(m=>{
-    const isMe = m.uid===CU.uid;
+    const isMe = m.uid===CU.positionID;
     const isMemberOwner = m.uid===g.ownerUid;
     return `
       <div style="background:var(--paper);border:1px solid var(--divider);border-radius:var(--r-md);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px">
@@ -1900,7 +1900,7 @@ function renderGroupTasksList(g){
     return;
   }
   el.innerHTML = tasksArr.map(t=>{
-    const myProg = (t.progressByUser||{})[CU.uid] || 0;
+    const myProg = (t.progressByUser||{})[CU.positionID] || 0;
     // 전체 평균 진행률 (담당자만 계산)
     const assignees = t.assignees||[];
     let avgProg = 0;
@@ -1912,7 +1912,7 @@ function renderGroupTasksList(g){
       const m = (g.members||[]).find(m=>m.uid===uid);
       return m ? m.name||m.positionID : uid;
     }).join(', ');
-    const iAmAssigned = assignees.includes(CU.uid);
+    const iAmAssigned = assignees.includes(CU.positionID);
     const dlStr = t.deadline ? `📅 ${t.deadline.slice(5)}` : '마감일 없음';
     const stars = '★'.repeat(Math.round(t.importance||0))+'☆'.repeat(5-Math.round(t.importance||0));
     return `
@@ -2039,7 +2039,7 @@ function openGroupTaskModal(){
     const memberOpts = (g.members||[]).map(m=>`
       <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--paper);border-radius:var(--r-sm);margin-bottom:4px;cursor:pointer">
         <input type="checkbox" name="gt-assignee" value="${m.uid}" style="width:16px;height:16px">
-        <span style="font-size:13px;color:var(--ink2)">${m.name||m.positionID}${m.uid===CU.uid?' (나)':''}</span>
+        <span style="font-size:13px;color:var(--ink2)">${m.name||m.positionID}${m.uid===CU.positionID?' (나)':''}</span>
       </label>
     `).join('');
 
