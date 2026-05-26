@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.7.9 · 2026-05-24
+    v2.7.10 · 2026-05-24
   </div>
 </div>
 
@@ -3173,14 +3173,15 @@ function onDragEnd(e){
       if(dragState.sourceType==='block'){
         scheduledBlocks = scheduledBlocks.filter(b=>b.id!==dragState.sourceBlock.id);
       }
+      const newBlockId = blockIdCounter++;
       scheduledBlocks.push({
-        id: blockIdCounter++,
+        id: newBlockId,
         taskId: dragState.taskId,
         day, dateStr,
         startMin: slotMin, endMin
       });
-      // 같은 과제의 인접한 블록과 자동 병합
-      mergeAdjacentBlocks(dragState.taskId, day, dateStr);
+      // 방금 놓인 블록과 직접 인접한 경우에만 병합
+      mergeAdjacentBlocks(newBlockId);
       placed = true;
       toast('배치됨 ✓','ok');
     } else if(conflict==='class'){ toast('수업 시간과 겹칩니다','err'); }
@@ -3226,29 +3227,38 @@ function removeBlock(id){
   renderSchedule();
 }
 
-// 같은 과제의 인접한 블록 자동 병합 (같은 날짜에 한정)
-function mergeAdjacentBlocks(taskId, day, dateStr){
-  let merged = true;
-  let iterations = 0;
-  while(merged && iterations<20){
-    merged = false;
-    iterations++;
-    // 같은 task + 같은 날짜 블록 모두 모으기 (원본 참조)
-    const same = scheduledBlocks
-      .filter(b=>b.taskId===taskId && b.day===day && b.dateStr===dateStr)
-      .sort((a,b)=>a.startMin-b.startMin);
-    for(let i=0;i<same.length-1;i++){
-      const a = same[i], b = same[i+1];
-      if(a.endMin === b.startMin){
-        // a의 endMin을 b의 endMin으로 확장 (a는 scheduledBlocks의 원본 참조)
-        a.endMin = b.endMin;
-        // b를 scheduledBlocks에서 제거
-        const bid = b.id;
-        scheduledBlocks = scheduledBlocks.filter(x=>x.id!==bid);
-        merged = true;
-        break;
-      }
+// 방금 배치/이동한 블록과 직접 인접한 같은 과제 블록만 병합
+// (다른 곳에 미리 분할되어 있던 블록들은 건드리지 않음)
+function mergeAdjacentBlocks(targetBlockId){
+  // 최대 2회 반복: 왼쪽 병합 후 오른쪽 병합 가능
+  for(let iter=0;iter<3;iter++){
+    const target = scheduledBlocks.find(b=>b.id===targetBlockId);
+    if(!target) return;
+    // 같은 과제 + 같은 날짜에서 직접 붙어있는 블록 찾기
+    const adjLeft = scheduledBlocks.find(b=>
+      b.id!==target.id && b.taskId===target.taskId &&
+      b.day===target.day && b.dateStr===target.dateStr &&
+      b.endMin===target.startMin
+    );
+    const adjRight = scheduledBlocks.find(b=>
+      b.id!==target.id && b.taskId===target.taskId &&
+      b.day===target.day && b.dateStr===target.dateStr &&
+      b.startMin===target.endMin
+    );
+    if(adjLeft){
+      // 왼쪽 블록의 끝을 target 끝으로 확장, target 제거
+      adjLeft.endMin = target.endMin;
+      scheduledBlocks = scheduledBlocks.filter(b=>b.id!==target.id);
+      targetBlockId = adjLeft.id; // 다음 반복에서 합쳐진 블록 기준으로
+      continue;
     }
+    if(adjRight){
+      // target의 끝을 오른쪽 블록의 끝으로 확장, 오른쪽 제거
+      target.endMin = adjRight.endMin;
+      scheduledBlocks = scheduledBlocks.filter(b=>b.id!==adjRight.id);
+      continue;
+    }
+    return; // 더 이상 병합할 게 없음
   }
 }
 
