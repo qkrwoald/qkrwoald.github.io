@@ -52,6 +52,7 @@
 
   --r-xs: 6px;
   --r-sm: 10px;
+  --r-md: 14px;
   --r:    14px;
   --r-lg: 20px;
   --r-xl: 26px;
@@ -761,7 +762,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.0.4 · 2026-05-24
+    v3.0.5 · 2026-05-24
   </div>
 </div>
 
@@ -1922,7 +1923,7 @@ function renderGroupTasksList(g){
         <div style="font-size:11px;color:var(--ink3);margin-bottom:8px">${dlStr} · ⏱ ${t.hours||1}h · <span style="color:var(--gold)">${stars}</span></div>
         ${t.memo?`<div style="font-size:11px;color:var(--ink3);padding:6px 8px;background:var(--paper3);border-radius:var(--r-sm);margin-bottom:8px">${t.memo}</div>`:''}
         <div style="font-size:11px;color:var(--ink2);margin-bottom:8px">담당: ${assigneeNames||'없음'}</div>
-        <div style="background:var(--paper3);border-radius:var(--r-md);padding:9px 11px;margin-top:6px">
+        <div style="background:var(--paper3);border-radius:var(--r-lg);padding:10px 12px;margin-top:6px">
           <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink2);margin-bottom:5px">
             <span>진행률</span><span style="font-weight:700;color:var(--terracotta)">${progress}%</span>
           </div>
@@ -3064,6 +3065,16 @@ function showPg(name){
   if(curPg!=='settings') prevPg=curPg;
   curPg=name;
 
+  // 현재 페이지 상태 저장 (새로고침 시 복원용)
+  try{
+    const state = {
+      page: name,
+      activeGroupId: (name==='group-detail') ? activeGroupId : null,
+      ts: Date.now()
+    };
+    localStorage.setItem('sq_curpage', JSON.stringify(state));
+  }catch(e){}
+
   document.getElementById('fab').classList.toggle('gone',!['home','tasks'].includes(name));
   if(name==='home')renderHome();
   else if(name==='tasks')renderTasks();
@@ -3527,6 +3538,19 @@ async function initApp(session){
   if(!CU.isAdmin) setTimeout(syncKsainTimetable, 1500);
   // 본인 과제를 sharedTasks와 동기화
   setTimeout(syncMyTasksToShared, 2500);
+
+  // 새로고침 시 마지막 페이지 복원 (24시간 이내만)
+  try{
+    const saved = JSON.parse(localStorage.getItem('sq_curpage')||'null');
+    if(saved && saved.page && Date.now()-saved.ts < 86400000){
+      if(saved.page === 'group-detail' && saved.activeGroupId){
+        activeGroupId = saved.activeGroupId;
+        showPg('group-detail');
+      } else if(saved.page !== 'home'){
+        showPg(saved.page);
+      }
+    }
+  }catch(e){}
 }
 
 /* ══════════════════════════════════════
