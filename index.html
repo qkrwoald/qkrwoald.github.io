@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.7.4 · 2026-05-24
+    v2.7.5 · 2026-05-24
   </div>
 </div>
 
@@ -3070,15 +3070,21 @@ function attachBlockHandlers(el, block){
   el.addEventListener('pointerup', e=>{
     if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
     el._pendingDrag = null;
-    // 길게 누르지도 않고 움직이지도 않았으면 → 클릭 = 제거
+    // 길게 누르지도 않고 움직이지도 않았으면 → 클릭 = 메뉴 표시
     if(!longPressed && !moved && !dragState){
-      removeBlock(block.id);
+      showBlockMenu(block, e.clientX, e.clientY);
     }
   });
 
   el.addEventListener('pointercancel', e=>{
     if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
     el._pendingDrag = null;
+  });
+
+  // PC 우클릭으로 메뉴
+  el.addEventListener('contextmenu', e=>{
+    e.preventDefault();
+    showBlockMenu(block, e.clientX, e.clientY);
   });
 }
 
@@ -3216,6 +3222,221 @@ function removePreview(){
 function removeBlock(id){
   scheduledBlocks = scheduledBlocks.filter(b=>b.id!==id);
   renderSchedule();
+}
+
+/* 블록 메뉴 (삭제 / 분할) */
+function showBlockMenu(block, x, y){
+  closeBlockMenu();
+  const t = tasks.find(t=>t.id===block.taskId);
+  if(!t) return;
+  const totalMin = block.endMin - block.startMin;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'block-menu-overlay';
+  overlay.style.cssText = `position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.25);
+    display:flex;align-items:center;justify-content:center;padding:20px`;
+  overlay.onclick = e=>{ if(e.target===overlay) closeBlockMenu(); };
+
+  overlay.innerHTML = `
+    <div style="background:var(--paper2);border-radius:var(--r-md);padding:18px 20px;
+                box-shadow:var(--shadow-lg);max-width:340px;width:100%">
+      <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">${t.name}</div>
+      <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">
+        ${minToTime(block.startMin)}~${minToTime(block.endMin)} · ${(totalMin/60).toFixed(1)}시간
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn btn-line" onclick="openSplitModal(${block.id})" style="padding:11px;font-size:13px">
+          ✂ 분할하여 배치
+        </button>
+        <button class="btn btn-line" onclick="removeBlock(${block.id});closeBlockMenu()" style="padding:11px;font-size:13px;color:var(--rose);border-color:var(--rose)">
+          🗑 일정에서 제거
+        </button>
+        <button class="btn btn-line" onclick="closeBlockMenu()" style="padding:11px;font-size:13px;color:var(--ink3)">
+          취소
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function closeBlockMenu(){
+  document.getElementById('block-menu-overlay')?.remove();
+  document.getElementById('split-modal-overlay')?.remove();
+}
+
+/* 분할 모달 */
+let splitState = null;
+
+function openSplitModal(blockId){
+  closeBlockMenu();
+  const block = scheduledBlocks.find(b=>b.id===blockId);
+  if(!block) return;
+  const t = tasks.find(t=>t.id===block.taskId);
+  if(!t) return;
+  const totalMin = block.endMin - block.startMin;
+
+  splitState = {
+    blockId,
+    taskId: block.taskId,
+    totalMin,
+    count: 2,
+    durations: [Math.floor(totalMin/2/30)*30, totalMin - Math.floor(totalMin/2/30)*30]
+  };
+
+  renderSplitModal(t.name);
+}
+
+function renderSplitModal(taskName){
+  document.getElementById('split-modal-overlay')?.remove();
+  const s = splitState;
+  if(!s) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'split-modal-overlay';
+  overlay.style.cssText = `position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.25);
+    display:flex;align-items:center;justify-content:center;padding:20px`;
+  overlay.onclick = e=>{ if(e.target===overlay) closeBlockMenu(); };
+
+  // 최대 분할 개수: totalMin / 30 (최소 30분 단위)
+  const maxCount = Math.floor(s.totalMin / 30);
+  const totalH = (s.totalMin/60).toFixed(1);
+  const usedMin = s.durations.reduce((a,b)=>a+b,0);
+  const remainMin = s.totalMin - usedMin;
+
+  let durationsHtml = '';
+  for(let i=0;i<s.count;i++){
+    const d = s.durations[i] || 0;
+    // 슬라이더 최대: 자신의 현재값 + 남은시간 (다른 항목 줄이지 않고 늘릴 수 있는 한도)
+    const maxThis = d + remainMin;
+    durationsHtml += `
+      <div style="margin-bottom:12px;padding:10px;background:var(--paper3);border-radius:var(--r-sm)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:12px;font-weight:600;color:var(--ink2)">분할 ${i+1}</span>
+          <span style="font-size:12px;color:var(--terracotta);font-weight:700;font-family:var(--f-mono)">
+            ${(d/60).toFixed(1)}h (${d}분)
+          </span>
+        </div>
+        <input type="range" min="30" max="${maxThis}" step="30" value="${d}"
+          oninput="updateSplitDuration(${i},this.value)"
+          style="width:100%">
+      </div>
+    `;
+  }
+
+  overlay.innerHTML = `
+    <div style="background:var(--paper2);border-radius:var(--r-md);padding:18px 20px;
+                box-shadow:var(--shadow-lg);max-width:380px;width:100%;max-height:85vh;overflow-y:auto">
+      <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">✂ ${taskName} 분할</div>
+      <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">
+        전체 ${totalH}시간을 여러 시간대로 나눠 배치합니다.
+      </div>
+
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:13px;font-weight:600;color:var(--ink2)">분할 개수</span>
+          <span style="font-size:13px;font-weight:700;color:var(--terracotta);font-family:var(--f-mono)">${s.count}개</span>
+        </div>
+        <input type="range" min="2" max="${maxCount}" step="1" value="${s.count}"
+          oninput="updateSplitCount(this.value)" style="width:100%">
+      </div>
+
+      <div style="margin-bottom:8px;font-size:13px;font-weight:600;color:var(--ink2)">각 분할 시간</div>
+      ${durationsHtml}
+
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;
+                  background:${usedMin===s.totalMin?'var(--tc-pale)':'var(--paper3)'};border-radius:var(--r-sm);margin-bottom:14px">
+        <span style="font-size:12px;color:var(--ink2)">합계</span>
+        <span style="font-size:13px;font-weight:700;color:${usedMin===s.totalMin?'var(--terracotta)':'var(--rose)'};font-family:var(--f-mono)">
+          ${(usedMin/60).toFixed(1)}h / ${totalH}h
+        </span>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-line" onclick="closeBlockMenu()" style="flex:1;padding:11px;font-size:13px">취소</button>
+        <button class="btn btn-main" onclick="applySplit()" style="flex:1;padding:11px;font-size:13px"
+          ${usedMin!==s.totalMin?'disabled style="flex:1;padding:11px;font-size:13px;opacity:.4;pointer-events:none"':''}>
+          분할 적용
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function updateSplitCount(val){
+  const newCount = parseInt(val);
+  const s = splitState;
+  if(!s) return;
+  // 균등 분배 (30분 단위)
+  const each = Math.floor(s.totalMin/newCount/30)*30;
+  const newDurations = new Array(newCount).fill(each);
+  // 남은 시간은 마지막에 몰아줌
+  const used = each*newCount;
+  newDurations[newCount-1] += (s.totalMin - used);
+  s.count = newCount;
+  s.durations = newDurations;
+  const t = tasks.find(t=>t.id===s.taskId);
+  renderSplitModal(t?.name||'');
+}
+
+function updateSplitDuration(idx, val){
+  const s = splitState;
+  if(!s) return;
+  s.durations[idx] = parseInt(val);
+  const t = tasks.find(t=>t.id===s.taskId);
+  renderSplitModal(t?.name||'');
+}
+
+/* 분할 적용: 원본 블록 제거 후, 빈 칩으로 돌려보냄. 
+   사용자가 칩들을 직접 드래그하여 배치하는 게 아니라, 
+   원본 블록을 분할 개수만큼 자동으로 같은 위치에 나란히 배치 */
+function applySplit(){
+  const s = splitState;
+  if(!s) return;
+  const orig = scheduledBlocks.find(b=>b.id===s.blockId);
+  if(!orig) return;
+  const usedMin = s.durations.reduce((a,b)=>a+b,0);
+  if(usedMin !== s.totalMin){ toast('합계가 전체 시간과 맞지 않습니다','err'); return; }
+
+  // 원본 제거
+  scheduledBlocks = scheduledBlocks.filter(b=>b.id!==s.blockId);
+
+  // 첫 번째 분할만 원래 위치에 배치, 나머지는 칩으로 분리하여 드래그 대기
+  // → 더 자연스럽게: 모두 같은 day의 연속된 슬롯에 배치 시도, 안 되면 원본 위치만 첫 분할로 유지
+  let curStart = orig.startMin;
+  let placed = 0;
+  const placedBlocks = [];
+  for(let i=0;i<s.count;i++){
+    const dur = s.durations[i];
+    const endMin = curStart + dur;
+    // 충돌 체크 (자기 자신 제외)
+    const conflict = checkConflict(orig.day, orig.dateStr, curStart, endMin, null);
+    if(conflict || endMin > SCHOOL_END*60){
+      // 여기 안 들어가면 이후도 안 됨 → 중단
+      break;
+    }
+    placedBlocks.push({
+      id: blockIdCounter++,
+      taskId: s.taskId,
+      day: orig.day,
+      dateStr: orig.dateStr,
+      startMin: curStart,
+      endMin
+    });
+    curStart = endMin;
+    placed++;
+  }
+  placedBlocks.forEach(b=>scheduledBlocks.push(b));
+
+  closeBlockMenu();
+  renderSchedule();
+  if(placed < s.count){
+    toast(`${placed}/${s.count}개 분할 배치됨. 나머지는 드래그로 직접 배치하세요`,'ok');
+  } else {
+    toast(`${s.count}개로 분할 완료 ✓`,'ok');
+  }
+  splitState = null;
 }
 
 
