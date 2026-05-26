@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.8.0 · 2026-05-24
+    v2.9.2 · 2026-05-24
   </div>
 </div>
 
@@ -799,6 +799,11 @@ canvas{width:100%;display:block;}
         <button class="btn btn-line" style="padding:6px 11px;font-size:12px" onclick="doRedo()">↪ 재실행</button>
         <div class="udots" id="udots"></div>
         <span style="font-size:11px;color:var(--ink3);font-family:var(--f-mono)" id="ucnt">0</span>
+      </div>
+      <div style="margin-bottom:8px">
+        <button class="btn btn-line btn-w" onclick="openClassmateModal()" style="padding:10px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px">
+          👥 분반 친구가 추가한 과제 보기
+        </button>
       </div>
       <div class="srch"><span class="srch-ico">⌕</span><input type="text" id="sq" placeholder="과제명, 과목 검색..." oninput="renderTasks()"></div>
       <div class="chips" id="fchips" style="margin-bottom:10px">
@@ -1308,7 +1313,7 @@ self.addEventListener('notificationclick',e=>{
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
-import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
+import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
 const _app = initializeApp({
   apiKey:"AIzaSyDd98pZve8q5WI_Y99qfqSalEYVrKQ1ixA",
   authDomain:"ksatudy-ce5dd.firebaseapp.com",
@@ -1321,6 +1326,12 @@ window._db=getFirestore(_app);
 window._fsDoc=doc;
 window._fsSetDoc=setDoc;
 window._fsGetDoc=getDoc;
+window._fsCollection=collection;
+window._fsQuery=query;
+window._fsWhere=where;
+window._fsGetDocs=getDocs;
+window._fsDeleteDoc=deleteDoc;
+window._fsServerTimestamp=serverTimestamp;
 window.dispatchEvent(new Event('fb-ready'));
 </script>
 
@@ -1392,6 +1403,221 @@ function getSession(){try{return JSON.parse(localStorage.getItem(SK)||'null');}c
 function saveSession(s){localStorage.setItem(SK,JSON.stringify(s));}
 function clearSession(){localStorage.removeItem(SK);}
 
+/* ══════════════════════════════════════
+   공유 시스템 — sharedTasks 컬렉션
+══════════════════════════════════════ */
+
+// 분반 키 생성: 과목코드_분반
+function makeClassKey(code, section){
+  if(!code || !section) return null;
+  return `${code}_${section}`;
+}
+
+// 공유 가능한 과제인지 (KSAIN 분반 정보 있고, Classroom 출처 아님)
+function isShareable(task){
+  if(!task.subjectCode || !task.classSection) return false;
+  if(task.fromClassroom) return false;
+  return true;
+}
+
+// 과제를 sharedTasks에 업로드
+async function shareTask(task){
+  if(!isShareable(task)) return;
+  if(!window._db || !CU) return;
+  try{
+    const sharedId = `${CU.uid}_${task.id}`;
+    const shareDoc = {
+      sharedId,
+      ownerUid: CU.uid,
+      ownerName: CU.name||'',
+      ownerPositionID: CU.positionID||'',
+      taskId: task.id,
+      subjectCode: task.subjectCode,
+      classSection: task.classSection,
+      classKey: makeClassKey(task.subjectCode, task.classSection),
+      subject: task.subject,
+      name: task.name,
+      deadline: task.deadline||'',
+      hours: task.hours||1,
+      importance: task.importance||3,
+      memo: task.memo||'',
+      updatedAt: Date.now()
+    };
+    const ref = window._fsDoc(window._db, 'sharedTasks', sharedId);
+    await window._fsSetDoc(ref, shareDoc);
+  }catch(e){ console.warn('shareTask error:', e); }
+}
+
+// 공유 해제 (과제 삭제 / 비공유 과목으로 수정 시)
+async function unshareTask(taskId){
+  if(!window._db || !CU) return;
+  try{
+    const sharedId = `${CU.uid}_${taskId}`;
+    const ref = window._fsDoc(window._db, 'sharedTasks', sharedId);
+    await window._fsDeleteDoc(ref);
+  }catch(e){ console.warn('unshareTask error:', e); }
+}
+
+// 내가 수강하는 분반의 다른 사람 공유 과제 조회
+async function fetchClassmateTasks(){
+  if(!window._db || !CU) return [];
+  const mySubjects = getKsainSubjects();
+  if(!mySubjects.length) return [];
+  const myClassKeys = mySubjects
+    .map(s=>makeClassKey(s.code, s.classSection))
+    .filter(Boolean);
+  if(!myClassKeys.length) return [];
+
+  const result = [];
+  // 분반별로 쿼리 (Firestore 'in' 쿼리는 최대 10개)
+  try{
+    const col = window._fsCollection(window._db, 'sharedTasks');
+    // 'in' 연산자로 한 번에 (최대 10개 분반)
+    const chunks = [];
+    for(let i=0;i<myClassKeys.length;i+=10){
+      chunks.push(myClassKeys.slice(i,i+10));
+    }
+    for(const chunk of chunks){
+      const q = window._fsQuery(col, window._fsWhere('classKey','in',chunk));
+      const snap = await window._fsGetDocs(q);
+      snap.forEach(d=>{
+        const data = d.data();
+        // 본인 과제는 제외
+        if(data.ownerUid === CU.uid) return;
+        result.push(data);
+      });
+    }
+  }catch(e){
+    console.error('fetchClassmateTasks error:',e);
+    throw e;
+  }
+  // 마감일 순 정렬
+  result.sort((a,b)=>{
+    const da = a.deadline || '9999-99-99';
+    const db = b.deadline || '9999-99-99';
+    return da.localeCompare(db);
+  });
+  return result;
+}
+
+// ── 분반 친구 과제 모달 ──
+async function openClassmateModal(){
+  // 기존 모달 제거
+  document.getElementById('classmate-modal-overlay')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'classmate-modal-overlay';
+  overlay.style.cssText = `position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.25);
+    display:flex;align-items:center;justify-content:center;padding:20px`;
+  overlay.onclick = e=>{ if(e.target===overlay) overlay.remove(); };
+
+  overlay.innerHTML = `
+    <div style="background:var(--paper2);border-radius:var(--r-lg);padding:20px 22px;
+                box-shadow:var(--shadow-lg);max-width:480px;width:100%;max-height:85vh;display:flex;flex-direction:column">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">👥 분반 친구 과제</div>
+        <button onclick="document.getElementById('classmate-modal-overlay').remove()"
+          style="background:none;border:none;font-size:20px;color:var(--ink3);cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="font-size:11px;color:var(--ink3);margin-bottom:14px">
+        같은 분반 친구들이 추가한 과제 (Classroom 출처 제외)
+      </div>
+      <div id="classmate-list" style="flex:1;overflow-y:auto;min-height:200px">
+        <div style="text-align:center;color:var(--ink3);font-size:13px;padding:30px 0">⏳ 불러오는 중...</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  try{
+    const list = await fetchClassmateTasks();
+    renderClassmateList(list);
+  }catch(e){
+    document.getElementById('classmate-list').innerHTML =
+      `<div style="text-align:center;color:var(--rose);font-size:13px;padding:30px 10px">
+        불러오기 실패<br><span style="font-size:11px;color:var(--ink3)">${e.message||e}</span>
+      </div>`;
+  }
+}
+
+function renderClassmateList(list){
+  const el = document.getElementById('classmate-list');
+  if(!el) return;
+  if(!list.length){
+    el.innerHTML = `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:30px 10px">
+      📭 분반 친구가 공유한 과제가 없습니다.<br>
+      <span style="font-size:11px;color:var(--ink4);margin-top:6px;display:inline-block">친구도 같은 앱을 써야 표시됩니다</span>
+    </div>`;
+    return;
+  }
+
+  // 내가 이미 가져온 과제 (이름+마감일 매칭)
+  const myKeys = new Set(tasks.map(t=>`${t.name}__${t.deadline}`));
+
+  el.innerHTML = list.map((s,idx)=>{
+    const c = sc(s.subject||'');
+    const dl = s.deadline ? `📅 ${s.deadline.slice(5)}` : '마감일 없음';
+    const owner = `${s.ownerName||'?'} (${s.ownerPositionID||''})`;
+    const alreadyImported = myKeys.has(`${s.name}__${s.deadline}`);
+    const stars = '★'.repeat(Math.round(s.importance||0)) + '☆'.repeat(5-Math.round(s.importance||0));
+    return `
+      <div style="background:var(--paper);border:1px solid var(--divider);border-radius:var(--r-md);padding:11px 13px;margin-bottom:8px">
+        <div style="display:flex;align-items:start;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+              <span style="width:8px;height:8px;border-radius:50%;background:${c};display:inline-block;flex-shrink:0"></span>
+              <span style="font-size:11px;color:var(--ink3);font-weight:600">${s.subject}${s.classSection?' '+s.classSection+'분반':''}</span>
+            </div>
+            <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px;line-height:1.3">${s.name}</div>
+            <div style="font-size:11px;color:var(--ink3);line-height:1.4">
+              ${dl} · ⏱ ${s.hours||1}h · <span style="color:var(--gold)">${stars}</span>
+            </div>
+            ${s.memo?`<div style="font-size:11px;color:var(--ink3);margin-top:4px;padding:5px 7px;background:var(--paper3);border-radius:var(--r-xs);line-height:1.4">${s.memo}</div>`:''}
+            <div style="font-size:10px;color:var(--ink4);margin-top:6px">👤 ${owner}</div>
+          </div>
+          <div style="flex-shrink:0">
+            ${alreadyImported
+              ? `<div style="font-size:11px;color:var(--ink3);padding:6px 10px;background:var(--paper3);border-radius:var(--r-sm)">✓ 가져옴</div>`
+              : `<button class="btn btn-main" onclick="importClassmateTask(${idx})" style="padding:7px 11px;font-size:11px;border-radius:var(--r-sm)">+ 가져오기</button>`
+            }
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // list를 window에 저장 (importClassmateTask에서 접근)
+  window._classmateList = list;
+}
+
+function importClassmateTask(idx){
+  const list = window._classmateList || [];
+  const s = list[idx];
+  if(!s) return;
+  if(!s.deadline){ toast('마감일 없는 과제는 가져올 수 없습니다','err'); return; }
+  // 이미 있는지 확인
+  const exists = tasks.find(t=>t.name===s.name && t.deadline===s.deadline);
+  if(exists){ toast('이미 가져온 과제입니다','err'); return; }
+  const newTask = addTask(
+    s.subject, s.name, s.deadline,
+    s.importance||3, s.hours||1, s.memo||'',
+    s.subjectCode, s.classSection
+  );
+  toast(`"${s.name}" 가져옴 ✓`,'ok');
+  // 리스트 다시 렌더 (상태 갱신)
+  renderClassmateList(list);
+}
+
+// 본인 과제 전체를 sharedTasks와 동기화 (앱 시작 시 호출)
+async function syncMyTasksToShared(){
+  if(!CU) return;
+  for(const t of tasks){
+    if(!t.done && isShareable(t)){
+      shareTask(t); // 비동기 백그라운드
+    }
+  }
+}
+
 async function saveUD(uid,d){
   // localStorage에 항상 저장 (빠른 fallback)
   try{ localStorage.setItem('sqdata_'+uid, JSON.stringify(d)); }catch(e){}
@@ -1442,6 +1668,30 @@ async function doKsainLogin(){
   document.getElementById('aerr').style.display='none';
   formArea.style.display='none';
   loading.style.display='block';
+
+  // === 로컬 admin 계정 (개발/테스트용) ===
+  if(uid==='admin' && pw==='090502'){
+    const s={
+      uid:'admin',
+      name:'관리자',
+      positionID:'99-999',
+      email:'admin@ksa.hs.kr',
+      ksainId:'admin',
+      ksainToken:null,
+      groups:['admin','student'],
+      isAdmin:true
+    };
+    saveSession(s);
+    // admin용 더미 KSAIN 과목 강제 설정
+    saveKsainSubjects([
+      {code:'CS-DS', name:'자료구조', engName:'Data Structures', classSection:1, teacher:'관리자'},
+      {code:'HA-LIT', name:'문학', engName:'Literature', classSection:3, teacher:'관리자'}
+    ]);
+    pwInput.value='';
+    initApp(s);
+    return;
+  }
+
   try{
     const res=await fetch(KSAIN_BASE+'/auth/signin',{
       method:'POST',
@@ -1588,18 +1838,24 @@ function addTask(sub,nm,dl,imp,hrs,memo,subjectCode,classSection){
   if(classSection) t.classSection = classSection;
   t.score=calcScore(t);
   undoSt.push({type:'add',task:{...t},desc:`"${nm}" 추가`});redoSt.clear();
-  tasks.push(t);markAct();rebuild();saveState();renderAll();return t; // saveState는 비동기이므로 저장 실패해도 localStorage에 백업됨
+  tasks.push(t);markAct();rebuild();saveState();renderAll();
+  // 자동 공유 (KSAIN 과목인 경우만)
+  if(isShareable(t)) shareTask(t);
+  return t;
 }
 function delTask(id){
   const idx=tasks.findIndex(t=>t.id===id);if(idx<0)return;
+  const wasShareable = isShareable(tasks[idx]);
   undoSt.push({type:'del',task:{...tasks[idx]},desc:`"${tasks[idx].name}" 삭제`});redoSt.clear();
   tasks.splice(idx,1);rebuild();saveState();renderAll();toast('삭제됨');
+  if(wasShareable) unshareTask(id);
 }
 function markDone(id){
   const t=tasks.find(t=>t.id===id);if(!t||t.done)return;
   undoSt.push({type:'done',id,prev:false,desc:`"${t.name}" 완료`});redoSt.clear();
   t.done=true;t.progress=100;markAct();rebuild();saveState();renderAll();
   toast('🎉 완료!','ok');
+  unshareTask(id);
 }
 function setProgress(id,v){
   const t=tasks.find(t=>t.id===id);if(!t)return;
@@ -2019,6 +2275,8 @@ function applyTheme(){
 let editingTaskId = null; // 수정 중인 과제 ID (null이면 새 과제)
 
 function openSheet(){
+  // Classroom 출처 플래그 리셋 (gmailSuggestAdd가 다시 set함)
+  window._sheetFromClassroom = false;
   editingTaskId = null;
   document.getElementById('sh-title').textContent = '새 과제 등록';
   const dl=new Date();dl.setDate(dl.getDate()+7);document.getElementById('f-dl').value=dl.toISOString().slice(0,10);
@@ -2067,6 +2325,9 @@ function submitTask(){
       if(_meta){ t.subjectCode = _meta.code; t.classSection = _meta.classSection; }
       else { delete t.subjectCode; delete t.classSection; }
       t.score=calcScore(t);
+      // 공유 갱신 (KSAIN 과목이면 업데이트, 아니면 제거)
+      if(isShareable(t)) shareTask(t);
+      else unshareTask(t.id);
     }
     rebuild();saveState();renderAll();
     closeSheet();toast('"'+nm+'" 수정됨 ✓','ok');
@@ -2074,7 +2335,10 @@ function submitTask(){
     // 새 과제 등록
     if(!dl){toast('마감일을 입력해주세요','err');return;}
     const _meta = getSelectedSubjectMeta();
-    addTask(sub,nm,dl,starV,hrs,memo,_meta?.code,_meta?.classSection);closeSheet();toast('"'+nm+'" 추가됨 ✓','ok');
+    const _newT = addTask(sub,nm,dl,starV,hrs,memo,_meta?.code,_meta?.classSection);
+    if(window._sheetFromClassroom && _newT){ _newT.fromClassroom = true; saveState(); }
+    window._sheetFromClassroom = false;
+    closeSheet();toast('"'+nm+'" 추가됨 ✓','ok');
   }
 }
 function renderStarSVG(containerId, val, onClickFn){
@@ -2502,6 +2766,7 @@ function gmailSuggestAdd(idx){
   gmailSuggestions.splice(idx,1);
   renderGmailSuggestions();
   openSheet();
+  window._sheetFromClassroom = true; // Classroom 출처 마크
   setTimeout(()=>{
     const cleaned = cleanCourseName(a.subject);
     setSubjectValue(cleaned);
@@ -2639,8 +2904,10 @@ async function initApp(session){
   }
   // 알람 시스템 시작
   setTimeout(startAlarmSystem, 1000);
-  // KSAIN 시간표 자동 동기화 (백그라운드)
-  setTimeout(syncKsainTimetable, 1500);
+  // KSAIN 시간표 자동 동기화 (백그라운드) - admin 제외
+  if(!CU.isAdmin) setTimeout(syncKsainTimetable, 1500);
+  // 본인 과제를 sharedTasks와 동기화
+  setTimeout(syncMyTasksToShared, 2500);
 }
 
 /* ══════════════════════════════════════
