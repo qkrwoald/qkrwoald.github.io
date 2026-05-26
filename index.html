@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.0.3 · 2026-05-24
+    v3.0.4 · 2026-05-24
   </div>
 </div>
 
@@ -1630,7 +1630,7 @@ async function addGroupTask(groupId, taskData){
     importance: taskData.importance||3,
     memo: taskData.memo||'',
     assignees: taskData.assignees||[], // [uid]
-    progressByUser: {}, // {uid: 0~100}
+    progress: 0,  // 0~100 (모든 멤버 공통)
     createdBy: CU.positionID,
     createdAt: Date.now()
   };
@@ -1654,14 +1654,16 @@ async function delGroupTask(groupId, taskId){
   }catch(e){ return false; }
 }
 
-// 본인 진행률 업데이트
-async function updateMyProgress(groupId, taskId, progress){
+// 그룹 과제 진행률 업데이트 (모든 멤버 공통)
+async function updateGroupProgress(groupId, taskId, progress){
   const g = await fetchGroup(groupId);
   if(!g) return false;
   const tasksArr = g.groupTasks||[];
   const idx = tasksArr.findIndex(t=>t.id===taskId);
   if(idx<0) return false;
-  tasksArr[idx].progressByUser = {...(tasksArr[idx].progressByUser||{}), [CU.positionID]:progress};
+  tasksArr[idx].progress = parseInt(progress);
+  tasksArr[idx].lastUpdatedBy = CU.positionID;
+  tasksArr[idx].lastUpdatedAt = Date.now();
   try{
     const ref = window._fsDoc(window._db, 'groups', groupId);
     await window._fsSetDoc(ref, {...g, groupTasks:tasksArr});
@@ -1873,7 +1875,7 @@ function renderGroupMembers(g){
     const isMe = m.uid===CU.positionID;
     const isMemberOwner = m.uid===g.ownerUid;
     return `
-      <div style="background:var(--paper);border:1px solid var(--divider);border-radius:var(--r-md);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px">
+      <div style="background:var(--paper);border:1px solid var(--divider);border-radius:var(--r-lg);padding:11px 13px;margin-bottom:6px;display:flex;align-items:center;gap:10px">
         <div style="width:34px;height:34px;border-radius:50%;background:var(--tc-mid);color:var(--terracotta);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">
           ${(m.name||'?').charAt(0)}
         </div>
@@ -1902,44 +1904,30 @@ function renderGroupTasksList(g){
     return;
   }
   el.innerHTML = tasksArr.map(t=>{
-    const myProg = (t.progressByUser||{})[CU.positionID] || 0;
-    // 전체 평균 진행률 (담당자만 계산)
+    // 통합 진행률 (모든 멤버가 함께 조절)
+    const progress = t.progress || 0;
     const assignees = t.assignees||[];
-    let avgProg = 0;
-    if(assignees.length){
-      const sum = assignees.reduce((acc,uid)=>acc + ((t.progressByUser||{})[uid]||0), 0);
-      avgProg = Math.round(sum/assignees.length);
-    }
     const assigneeNames = assignees.map(uid=>{
       const m = (g.members||[]).find(m=>m.uid===uid);
       return m ? m.name||m.positionID : uid;
     }).join(', ');
-    const iAmAssigned = assignees.includes(CU.positionID);
     const dlStr = t.deadline ? `📅 ${t.deadline.slice(5)}` : '마감일 없음';
     const stars = '★'.repeat(Math.round(t.importance||0))+'☆'.repeat(5-Math.round(t.importance||0));
     return `
-      <div style="background:var(--paper);border:1px solid var(--divider);border-radius:var(--r-md);padding:11px 13px;margin-bottom:8px">
+      <div style="background:var(--paper);border:1px solid var(--divider);border-radius:var(--r-lg);padding:12px 14px;margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;margin-bottom:6px">
           <div style="font-size:14px;font-weight:700;color:var(--ink);flex:1">${t.name}</div>
           <button onclick="onDelGroupTask('${t.id}','${t.name.replace(/'/g,'')}')" style="background:none;border:none;color:var(--ink4);cursor:pointer;font-size:12px;flex-shrink:0">✕</button>
         </div>
         <div style="font-size:11px;color:var(--ink3);margin-bottom:8px">${dlStr} · ⏱ ${t.hours||1}h · <span style="color:var(--gold)">${stars}</span></div>
-        ${t.memo?`<div style="font-size:11px;color:var(--ink3);padding:5px 7px;background:var(--paper3);border-radius:var(--r-xs);margin-bottom:8px">${t.memo}</div>`:''}
-        <div style="font-size:11px;color:var(--ink2);margin-bottom:4px">담당: ${assigneeNames||'없음'}</div>
-        ${assignees.length ? `<div style="margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink3);margin-bottom:3px">
-            <span>팀 진행률</span><span style="font-weight:700;color:var(--terracotta)">${avgProg}%</span>
+        ${t.memo?`<div style="font-size:11px;color:var(--ink3);padding:6px 8px;background:var(--paper3);border-radius:var(--r-sm);margin-bottom:8px">${t.memo}</div>`:''}
+        <div style="font-size:11px;color:var(--ink2);margin-bottom:8px">담당: ${assigneeNames||'없음'}</div>
+        <div style="background:var(--paper3);border-radius:var(--r-md);padding:9px 11px;margin-top:6px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink2);margin-bottom:5px">
+            <span>진행률</span><span style="font-weight:700;color:var(--terracotta)">${progress}%</span>
           </div>
-          <div style="height:6px;background:var(--paper3);border-radius:3px;overflow:hidden">
-            <div style="height:100%;background:var(--terracotta);width:${avgProg}%;transition:width .3s"></div>
-          </div>
-        </div>` : ''}
-        ${iAmAssigned ? `<div style="background:var(--paper3);border-radius:var(--r-sm);padding:8px 10px;margin-top:6px">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink2);margin-bottom:4px">
-            <span>내 진행률</span><span style="font-weight:700;color:var(--terracotta)">${myProg}%</span>
-          </div>
-          <input type="range" min="0" max="100" step="10" value="${myProg}" oninput="onUpdateMyProgress('${t.id}',this.value)" style="width:100%">
-        </div>` : ''}
+          <input type="range" min="0" max="100" step="10" value="${progress}" oninput="onUpdateGroupProgress('${t.id}',this.value)" style="width:100%">
+        </div>
       </div>
     `;
   }).join('');
@@ -1979,10 +1967,15 @@ async function onDelGroupTask(taskId, name){
   }
 }
 
-async function onUpdateMyProgress(taskId, val){
-  await updateMyProgress(activeGroupId, taskId, parseInt(val));
-  // 시각적 즉시 갱신
-  renderGroupDetail();
+async function onUpdateGroupProgress(taskId, val){
+  // 슬라이더 드래그 중 너무 많은 요청 방지 위해 디바운스
+  clearTimeout(window._progressDebounce);
+  // UI 즉시 업데이트 (라벨)
+  // 입력 이벤트로 들어온 currentTarget의 형제 라벨 직접 갱신
+  window._progressDebounce = setTimeout(async ()=>{
+    await updateGroupProgress(activeGroupId, taskId, parseInt(val));
+    renderGroupDetail();
+  }, 300);
 }
 
 /* ── 초대 모달 ── */
@@ -2182,7 +2175,7 @@ function renderClassmateList(list){
     const alreadyImported = myKeys.has(`${s.name}__${s.deadline}`);
     const stars = '★'.repeat(Math.round(s.importance||0)) + '☆'.repeat(5-Math.round(s.importance||0));
     return `
-      <div style="background:var(--paper);border:1px solid var(--divider);border-radius:var(--r-md);padding:11px 13px;margin-bottom:8px">
+      <div style="background:var(--paper);border:1px solid var(--divider);border-radius:var(--r-lg);padding:12px 14px;margin-bottom:8px">
         <div style="display:flex;align-items:start;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
