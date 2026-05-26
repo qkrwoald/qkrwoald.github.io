@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v2.7.7 · 2026-05-24
+    v2.7.8 · 2026-05-24
   </div>
 </div>
 
@@ -2861,16 +2861,16 @@ function renderSchedule(){
     const col = cols[di];
     if(!col) return;
     const dateStr = dates[di].toISOString().slice(0,10);
-    // 30분 단위 드롭 슬롯 (투명)
-    const totalSlots = (SCHOOL_END-SCHOOL_START)*2;
+    // 10분 단위 드롭 슬롯 (투명)
+    const totalSlots = (SCHOOL_END-SCHOOL_START)*6; // 60분 / 10분 = 6
     for(let s=0;s<totalSlots;s++){
-      const slotMin = s*30;
+      const slotMin = s*10;
       const slot = document.createElement('div');
       slot.className = 'tslot';
       slot.dataset.day = day;
       slot.dataset.datestr = dateStr;
       slot.dataset.slotmin = SCHOOL_START*60 + slotMin;
-      slot.style.cssText = `position:absolute;top:${slotMin/60*slotH}px;left:0;right:0;height:${slotH/2}px;z-index:2;`;
+      slot.style.cssText = `position:absolute;top:${slotMin/60*slotH}px;left:0;right:0;height:${slotH/6}px;z-index:2;`;
       col.appendChild(slot);
     }
     // 배치된 블록
@@ -3003,7 +3003,7 @@ function attachChipHandlers(el, taskId){
     startDrag(e, {
       sourceType:'chip',
       taskId,
-      durationMin: Math.ceil((t.hours||1)*60/30)*30,
+      durationMin: Math.ceil((t.hours||1)*60/10)*10,
       sourceBlock: null,
       sourceEl: el
     });
@@ -3222,6 +3222,27 @@ function removePreview(){
 function removeBlock(id){
   scheduledBlocks = scheduledBlocks.filter(b=>b.id!==id);
   renderSchedule();
+}
+
+// 같은 과제의 인접한 블록 자동 병합 (같은 날짜에 한정)
+function mergeAdjacentBlocks(taskId, day, dateStr){
+  let merged = true;
+  while(merged){
+    merged = false;
+    // 같은 task + 같은 날짜 블록 모두 모으기
+    const same = scheduledBlocks.filter(b=>b.taskId===taskId && b.day===day && b.dateStr===dateStr);
+    same.sort((a,b)=>a.startMin-b.startMin);
+    for(let i=0;i<same.length-1;i++){
+      const a = same[i], b = same[i+1];
+      if(a.endMin === b.startMin){
+        // 두 블록 병합 가능: a 확장, b 제거
+        a.endMin = b.endMin;
+        scheduledBlocks = scheduledBlocks.filter(x=>x.id!==b.id);
+        merged = true;
+        break;
+      }
+    }
+  }
 }
 
 /* 블록 메뉴 (삭제 / 분할) */
