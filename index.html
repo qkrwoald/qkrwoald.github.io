@@ -761,7 +761,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.0.1 · 2026-05-24
+    v3.0.2 · 2026-05-24
   </div>
 </div>
 
@@ -1723,12 +1723,12 @@ function renderGroupInvites(){
   el.innerHTML = `
     <div class="sec" style="margin:0 0 8px">📩 받은 초대</div>
     ${currentInvites.map(inv=>`
-      <div style="background:var(--paper2);border:1.5px solid var(--terracotta);border-radius:var(--r-md);padding:13px;margin-bottom:8px">
+      <div style="background:var(--paper2);border:1px solid var(--divider);border-radius:var(--r-lg);padding:14px 16px;margin-bottom:8px;box-shadow:var(--shadow-xs)">
         <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:3px">${inv.groupName}</div>
-        <div style="font-size:11px;color:var(--ink3);margin-bottom:10px">초대자: ${inv.inviterName||'?'}</div>
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">초대자: ${inv.inviterName||'?'}</div>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-main" onclick="onAcceptInvite('${inv.groupId}')" style="flex:1;padding:8px;font-size:13px">수락</button>
-          <button class="btn btn-line" onclick="onRejectInvite('${inv.groupId}')" style="flex:1;padding:8px;font-size:13px">거절</button>
+          <button class="btn btn-main" onclick="onAcceptInvite('${inv.groupId}')" style="flex:1;padding:9px;font-size:13px;border-radius:var(--r-lg)">수락</button>
+          <button class="btn btn-line" onclick="onRejectInvite('${inv.groupId}')" style="flex:1;padding:9px;font-size:13px;border-radius:var(--r-lg)">거절</button>
         </div>
       </div>
     `).join('')}
@@ -1767,10 +1767,12 @@ function renderGroupList(){
 }
 
 async function onAcceptInvite(groupId){
-  if(await acceptInvite(groupId)){
+  const ok = await acceptInvite(groupId);
+  if(ok){
     toast('수락 완료 ✓','ok');
-    renderGroupTab();
-  } else { toast('실패','err'); }
+    // Firestore 일관성을 위해 짧은 딜레이 후 새로고침
+    setTimeout(()=>renderGroupTab(), 300);
+  } else { toast('수락 실패','err'); }
 }
 
 async function onRejectInvite(groupId){
