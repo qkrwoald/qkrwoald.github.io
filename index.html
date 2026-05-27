@@ -765,7 +765,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.3.0 · 2026-05-24
+    v3.3.1 · 2026-05-24
   </div>
 </div>
 
@@ -2505,7 +2505,11 @@ function delTask(id){
   const idx=tasks.findIndex(t=>t.id===id);if(idx<0)return;
   const wasShareable = isShareable(tasks[idx]);
   undoSt.push({type:'del',task:{...tasks[idx]},desc:`"${tasks[idx].name}" 삭제`});redoSt.clear();
-  tasks.splice(idx,1);rebuild();saveState();renderAll();toast('삭제됨');
+  tasks.splice(idx,1);
+  // 해당 과제의 시간표 블록도 제거
+  scheduledBlocks = scheduledBlocks.filter(b=>b.taskId!==id);
+  saveScheduledBlocks();
+  rebuild();saveState();renderAll();toast('삭제됨');
   if(wasShareable) unshareTask(id);
 }
 function markDone(id){
@@ -3004,6 +3008,7 @@ function submitTask(){
         const autoBlocks = scheduledBlocks.filter(b=>b.taskId===t.id && b.auto);
         if(autoBlocks.length > 0){
           scheduledBlocks = scheduledBlocks.filter(b=>!(b.taskId===t.id && b.auto));
+          saveScheduledBlocks();
         }
       }
     }
@@ -3556,6 +3561,7 @@ async function initApp(session){
   document.getElementById('auth-screen').style.display='none';
   document.getElementById('app').style.display='block';
   loadTimetableFromStorage();
+  loadScheduledBlocks();
 
   // 마이그레이션: 예전 기본 과목(자료구조, 물리학및실험2)이 사용자 정의에 들어있으면 제거
   try{
@@ -3995,6 +4001,21 @@ function renderSchedule(){
 
 let scheduledBlocks = []; // [{id, taskId, day, startMin, endMin, dateStr}]
 let blockIdCounter = 1;
+
+function saveScheduledBlocks(){
+  try{
+    localStorage.setItem('sq_scheduledBlocks', JSON.stringify(scheduledBlocks));
+    localStorage.setItem('sq_blockIdCounter', String(blockIdCounter));
+  }catch(e){ console.warn('saveScheduledBlocks failed:', e); }
+}
+function loadScheduledBlocks(){
+  try{
+    const raw = localStorage.getItem('sq_scheduledBlocks');
+    if(raw) scheduledBlocks = JSON.parse(raw);
+    const c = parseInt(localStorage.getItem('sq_blockIdCounter')||'1');
+    if(c > 0) blockIdCounter = c;
+  }catch(e){ scheduledBlocks = []; blockIdCounter = 1; }
+}
 
 function minToTime(m){
   const h=Math.floor(m/60), mi=m%60;
@@ -4450,10 +4471,17 @@ function runAutoPlace(){
     return {...t, hours: remainingMin/60}; // 임시로 hours 조정
   }).filter(t=>t.hours > 0);
 
+  console.log('[AutoPlace] 배치 시도 과제:', adjusted.length, adjusted.map(t=>t.name));
+  const beforeCount = scheduledBlocks.length;
   const result = autoPlaceTasks(adjusted);
+  const afterCount = scheduledBlocks.length;
+  console.log('[AutoPlace] 결과:', result, '블록 변화:', beforeCount, '→', afterCount);
 
+  saveScheduledBlocks();
   document.getElementById('auto-place-overlay')?.remove();
-  renderSchedule();
+  // 일정 탭으로 강제 이동 후 렌더 (다른 탭에 있을 때도 결과 확인 가능)
+  showPg('schedule');
+  setTimeout(renderSchedule, 50);
 
   if(result.placed > 0){
     toast(`✨ ${result.placed}개 과제 배치 완료`,'ok');
@@ -4773,6 +4801,7 @@ function removePreview(){
 
 function removeBlock(id){
   scheduledBlocks = scheduledBlocks.filter(b=>b.id!==id);
+  saveScheduledBlocks();
   renderSchedule();
 }
 
@@ -5113,6 +5142,7 @@ function applySplit(){
 
   // 원본 제거
   scheduledBlocks = scheduledBlocks.filter(b=>b.id!==s.blockId);
+  saveScheduledBlocks();
 
   // 같은 day의 원래 위치에서부터 연속 배치 시도
   let curStart = orig.startMin;
