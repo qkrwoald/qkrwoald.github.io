@@ -747,12 +747,12 @@ canvas{width:100%;display:block;}
     <div class="auth-loading" id="auth-loading">🔄 로그인 중...</div>
     <div id="login-form-area">
       <div class="fld">
-        <label>학교 ID (KSAIN)</label>
-        <input type="text" id="login-uid" placeholder="예: jmxnt" autocomplete="username" autocapitalize="off">
+        <label>KSAIN 아이디</label>
+        <input type="text" id="login-uid" placeholder="ID" autocomplete="username" autocapitalize="off">
       </div>
       <div class="fld">
         <label>비밀번호</label>
-        <input type="password" id="login-pw" placeholder="KSAIN 비밀번호" autocomplete="current-password"
+        <input type="password" id="login-pw" placeholder="PW" autocomplete="current-password"
           onkeydown="if(event.key==='Enter')doKsainLogin()">
       </div>
       <button class="btn btn-main btn-w" onclick="doKsainLogin()" style="padding:13px;font-size:15px;margin-top:6px">
@@ -760,12 +760,12 @@ canvas{width:100%;display:block;}
       </button>
     </div>
     <div class="auth-notice">
-      KSAIN에서 사용하는 학교 ID와 비밀번호로 로그인하세요.<br>
-      <span style="font-size:11px;color:var(--ink4)">학번이 아닌 학교 시스템 ID입니다.</span>
+      KSAIN 아이디와 비밀번호로 로그인하세요.<br>
+      <span style="font-size:11px;color:var(--ink4)">2026-1 자료구조 프로젝트</span>
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.4.0 · 2026-05-27
+    v3.4.0 · 25-050 박재민 25-100 전민수
   </div>
 </div>
 
@@ -913,8 +913,8 @@ canvas{width:100%;display:block;}
       <div class="set-section">
         <div class="set-section-hd">홈 화면에 앱으로 설치하기</div>
         <div style="padding:12px 0;border-bottom:1px solid var(--divider);font-size:13px;color:var(--ink2);line-height:1.7">
-          📱 <strong>iOS</strong>: Safari → 공유(□↑) → 홈 화면에 추가<br>
-          🤖 <strong>Android</strong>: Chrome 메뉴(⋮) → 앱 설치<br>
+          📱 <strong>iOS</strong>: 공유 → 홈 화면에 추가<br>
+          🤖 <strong>Android</strong>: 메뉴 → 앱 설치<br>
           💻 <strong>PC</strong>: 주소창 오른쪽 설치 아이콘 클릭
         </div>
         <div style="padding:12px 0">
@@ -989,8 +989,9 @@ canvas{width:100%;display:block;}
         </div>
       </div>
 
+      
       <!-- 뽀모도로 타이머 -->
-      <div class="sec">뽀모도로 타이머</div>
+      <!-- <div class="sec">뽀모도로 타이머</div>
       <div class="set-section">
         <div class="set-slider-row">
           <div class="set-slider-head">
@@ -1017,7 +1018,7 @@ canvas{width:100%;display:block;}
           </div>
           <button class="tgl on" id="tgl-vib" onclick="toggleS('vibrate',this)"></button>
         </div>
-      </div>
+      </div> -->
 
       <!-- 표시 설정 -->
       <div class="sec">표시 설정</div>
@@ -1138,9 +1139,6 @@ canvas{width:100%;display:block;}
       <div class="sec">시간표 동기화</div>
       <div class="set-section">
         <div class="set-section-hd">KSAIN에서 시간표 자동 가져오기</div>
-        <div style="padding:12px 0;border-bottom:1px solid var(--divider);font-size:13px;color:var(--ink2);line-height:1.6">
-          로그인 시 자동으로 시간표를 가져옵니다.
-        </div>
         <div style="padding:12px 0">
           <button class="btn btn-line btn-w" onclick="syncKsainTimetable()">🔄 시간표 새로 가져오기</button>
         </div>
@@ -1176,7 +1174,7 @@ canvas{width:100%;display:block;}
       <div class="sec">추가 과목 관리</div>
       <div style="font-size:11px;color:var(--ink3);margin:-4px 0 6px">KSAIN 수강 과목 외에 추가하고 싶은 과목 (예: 자율 활동)</div>
       <div class="set-section">
-        <div class="set-section-hd">과목 목록 (드롭다운에 표시)</div>
+        <div class="set-section-hd">추가한 과목 목록</div>
         <div id="subject-list-ui" style="padding:10px 0"></div>
         <div style="padding:10px 0;border-top:1px solid var(--divider);display:flex;gap:8px">
           <input type="text" id="new-subject-input" placeholder="새 과목명 입력"
@@ -2278,7 +2276,7 @@ async function openClassmateModal(){
           style="background:none;border:none;font-size:20px;color:var(--ink3);cursor:pointer;line-height:1">×</button>
       </div>
       <div style="font-size:11px;color:var(--ink3);margin-bottom:14px">
-        같은 분반 친구들이 추가한 과제 (Classroom 출처 제외)
+        같은 분반 친구들이 추가한 과제
       </div>
       <div id="classmate-list" style="flex:1;overflow-y:auto;min-height:200px">
         <div style="text-align:center;color:var(--ink3);font-size:13px;padding:30px 0">⏳ 불러오는 중...</div>
@@ -2304,7 +2302,7 @@ function renderClassmateList(list){
   if(!list.length){
     el.innerHTML = `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:30px 10px">
       📭 분반 친구가 공유한 과제가 없습니다.<br>
-      <span style="font-size:11px;color:var(--ink4);margin-top:6px;display:inline-block">친구도 같은 앱을 써야 표시됩니다</span>
+      <span style="font-size:11px;color:var(--ink4);margin-top:6px;display:inline-block">친구도 KSATUDY를 사용중인지 확인하세요.</span>
     </div>`;
     return;
   }
