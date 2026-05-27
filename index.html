@@ -765,7 +765,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.4.0 · 25-050 박재민 25-100 전민수
+    v3.4.1 · 25-050 박재민 25-100 전민수
   </div>
 </div>
 
@@ -3794,6 +3794,8 @@ async function initApp(session){
   } else {
     showPg('home');
   }
+  // 첫 진입 시 일부 렌더가 누락되는 경우 대비, 다음 프레임에 한 번 더
+  setTimeout(()=>{ renderAll(); }, 30);
   if(window.matchMedia('(prefers-color-scheme: dark)').matches&&S.theme==='system'){document.documentElement.dataset.theme='dark';}
   // Classroom 연동 UI 업데이트
   updateGmailSettingsUI();
