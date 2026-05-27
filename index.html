@@ -765,7 +765,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.3.1 · 2026-05-24
+    v3.3.2 · 2026-05-27
   </div>
 </div>
 
@@ -3844,7 +3844,7 @@ function renderSchedule(){
 
   const dates = getWeekDates(scheduleOffset);
   const today = new Date();
-  const todayStr = today.toISOString().slice(0,10);
+  const todayStr = localDateStr(today);
 
   // 주간 레이블
   const weekLabel = document.getElementById('sched-week-label');
@@ -3870,7 +3870,7 @@ function renderSchedule(){
   html += `<div style="height:36px;width:20px"></div>`;
   const dayKeys=getScheduleDayKeys();
   dates.forEach((d,i)=>{
-    const isToday = d.toISOString().slice(0,10)===todayStr;
+    const isToday = localDateStr(d)===todayStr;
     const isWeekend = d.getDay()===0||d.getDay()===6;
     const radiusStyle = i===0 ? 'border-top-left-radius:var(--r-sm);' : (i===6 ? 'border-top-right-radius:var(--r-sm);' : '');
     html += `<div style="height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -3936,7 +3936,7 @@ function renderSchedule(){
   dayKeysArr.forEach((day,di)=>{
     const col = cols[di];
     if(!col) return;
-    const dateStr = dates[di].toISOString().slice(0,10);
+    const dateStr = localDateStr(dates[di]);
     // 10분 단위 드롭 슬롯 (투명)
     const totalSlots = (SCHOOL_END-SCHOOL_START)*6; // 60분 / 10분 = 6
     for(let s=0;s<totalSlots;s++){
@@ -4002,6 +4002,14 @@ function renderSchedule(){
 let scheduledBlocks = []; // [{id, taskId, day, startMin, endMin, dateStr}]
 let blockIdCounter = 1;
 
+// 로컬 시간대 기준 YYYY-MM-DD 문자열 (toISOString은 UTC라 timezone shift 발생)
+function localDateStr(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+
 function saveScheduledBlocks(){
   try{
     localStorage.setItem('sq_scheduledBlocks', JSON.stringify(scheduledBlocks));
@@ -4014,6 +4022,24 @@ function loadScheduledBlocks(){
     if(raw) scheduledBlocks = JSON.parse(raw);
     const c = parseInt(localStorage.getItem('sq_blockIdCounter')||'1');
     if(c > 0) blockIdCounter = c;
+    // 잘못 저장된 블록의 day와 dateStr 불일치 자동 보정
+    const days = ['sun','mon','tue','wed','thu','fri','sat'];
+    let fixed = 0;
+    scheduledBlocks.forEach(b=>{
+      if(b.dateStr){
+        const [y,m,d] = b.dateStr.split('-').map(Number);
+        const dt = new Date(y, m-1, d);
+        const correctDay = days[dt.getDay()];
+        if(b.day !== correctDay){
+          b.day = correctDay;
+          fixed++;
+        }
+      }
+    });
+    if(fixed > 0){
+      saveScheduledBlocks();
+      console.log('블록', fixed, '개 day 보정됨');
+    }
   }catch(e){ scheduledBlocks = []; blockIdCounter = 1; }
 }
 
@@ -4242,7 +4268,7 @@ function autoPlaceTasks(taskList, opts){
 
       const date = dates[i];
       const day = dateToDayKey(date);
-      const dateStr = date.toISOString().slice(0,10);
+      const dateStr = localDateStr(date);
       let freeSlots = findFreeSlots(day, dateStr);
       freeSlots = subtractRanges(freeSlots, excluded);
       // 자습 우선
@@ -4274,7 +4300,7 @@ function autoPlaceTasks(taskList, opts){
       const allSlots = [];
       for(const date of dates){
         const day = dateToDayKey(date);
-        const dateStr = date.toISOString().slice(0,10);
+        const dateStr = localDateStr(date);
         let freeSlots = findFreeSlots(day, dateStr);
         freeSlots = subtractRanges(freeSlots, excluded);
         for(const s of freeSlots) allSlots.push({...s, day, dateStr, date});
