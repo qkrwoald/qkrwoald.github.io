@@ -765,7 +765,7 @@ canvas{width:100%;display:block;}
     </div>
   </div>
   <div style="margin-top:20px;font-size:11px;color:var(--ink4);font-family:var(--f-mono);text-align:center;letter-spacing:.04em">
-    v3.4.1 · 25-050 박재민 25-100 전민수
+    v3.5.1 · 25-050 박재민 25-100 전민수
   </div>
 </div>
 
@@ -1666,8 +1666,8 @@ async function addGroupTask(groupId, taskData){
     hours: taskData.hours||1,
     importance: taskData.importance||3,
     memo: taskData.memo||'',
-    assignees: taskData.assignees||[], // [uid]
-    progress: 0,  // 0~100 (모든 멤버 공통)
+    assignees: taskData.assignees||[],
+    progress: 0,
     createdBy: CU.positionID,
     createdAt: Date.now()
   };
@@ -1675,8 +1675,54 @@ async function addGroupTask(groupId, taskData){
   try{
     const ref = window._fsDoc(window._db, 'groups', groupId);
     await window._fsSetDoc(ref, {...g, groupTasks:newTasks});
+    // 본인이 담당자라면 본인 과제에도 추가
+    if(newTask.assignees.includes(CU.positionID)){
+      ensureGroupTaskInMyTasks(groupId, g.name, newTask);
+    }
     return true;
   }catch(e){ return false; }
+}
+
+// 모임 과제를 본인 tasks에 추가 (이미 있으면 동기화)
+function ensureGroupTaskInMyTasks(groupId, groupName, gt){
+  if(!CU) return;
+  // 이미 존재하는지 확인
+  const exists = tasks.find(t=>t.groupTaskId===gt.id && t.groupId===groupId);
+  if(exists){
+    // 메타 동기화 (제목, 마감일, 시간 등 갱신)
+    exists.name = `[${groupName}] ${gt.name}`;
+    exists.deadline = gt.deadline||'';
+    exists.hours = gt.hours||1;
+    exists.importance = gt.importance||3;
+    exists.memo = gt.memo||'';
+    exists.progress = gt.progress||0;
+    if(exists.progress >= 100) exists.done = true;
+    exists.score = calcScore(exists);
+    saveState();
+    return exists;
+  }
+  // 새로 추가
+  const newT = {
+    id: nid++,
+    subject: groupName,
+    name: `[${groupName}] ${gt.name}`,
+    deadline: gt.deadline||'',
+    hours: gt.hours||1,
+    importance: gt.importance||3,
+    memo: gt.memo||'',
+    done: (gt.progress||0)>=100,
+    progress: gt.progress||0,
+    score: 0,
+    createdAt: Date.now(),
+    groupId: groupId,
+    groupTaskId: gt.id,
+    fromGroup: true
+  };
+  newT.score = calcScore(newT);
+  tasks.push(newT);
+  saveState();
+  rebuild();
+  return newT;
 }
 
 // 모임 과제 삭제
@@ -1687,6 +1733,20 @@ async function delGroupTask(groupId, taskId){
   try{
     const ref = window._fsDoc(window._db, 'groups', groupId);
     await window._fsSetDoc(ref, {...g, groupTasks:newTasks});
+    // 본인 tasks에서도 제거 (해당 그룹의 해당 과제)
+    const idx = tasks.findIndex(t=>t.groupTaskId===taskId && t.groupId===groupId);
+    if(idx >= 0){
+      tasks.splice(idx,1);
+      // 시간표 블록도 정리
+      scheduledBlocks = scheduledBlocks.filter(b=>{
+        const tk = tasks.find(t=>t.id===b.taskId);
+        return !!tk;
+      });
+      saveScheduledBlocks();
+      saveState();
+      rebuild();
+      if(curPg!=='group-detail') renderAll();
+    }
     return true;
   }catch(e){ return false; }
 }
@@ -1704,6 +1764,14 @@ async function updateGroupProgress(groupId, taskId, progress){
   try{
     const ref = window._fsDoc(window._db, 'groups', groupId);
     await window._fsSetDoc(ref, {...g, groupTasks:tasksArr});
+    // 본인 tasks에 미러 있으면 진행률 동기화
+    const myMirror = tasks.find(t=>t.groupTaskId===taskId && t.groupId===groupId);
+    if(myMirror){
+      myMirror.progress = parseInt(progress);
+      if(myMirror.progress >= 100) myMirror.done = true;
+      else myMirror.done = false;
+      saveState();
+    }
     return true;
   }catch(e){ return false; }
 }
@@ -2113,11 +2181,18 @@ async function submitGroupTask(){
 async function fetchClassmateTasks(){
   if(!window._db || !CU) return [];
   const mySubjects = getKsainSubjects();
-  if(!mySubjects.length) return [];
+  if(!mySubjects.length){
+    console.log('[fetchClassmate] KSAIN 과목 없음');
+    return [];
+  }
   const myClassKeys = mySubjects
     .map(s=>makeClassKey(s.code, s.classSection))
     .filter(Boolean);
-  if(!myClassKeys.length) return [];
+  if(!myClassKeys.length){
+    console.log('[fetchClassmate] classKey 생성 실패', mySubjects);
+    return [];
+  }
+  console.log('[fetchClassmate] 내 분반 키:', myClassKeys);
 
   const result = [];
   // 분반별로 쿼리 (Firestore 'in' 쿼리는 최대 10개)
@@ -2142,8 +2217,10 @@ async function fetchClassmateTasks(){
     console.error('fetchClassmateTasks error:',e);
     throw e;
   }
+  console.log('[fetchClassmate] Firestore에서 가져온 과제:', result.length);
   // 무시된 항목 제외
   const filtered = result.filter(r => !isClassmateIgnored(r));
+  console.log('[fetchClassmate] 무시 제외 후:', filtered.length);
   // 마감일 순 정렬
   filtered.sort((a,b)=>{
     const da = a.deadline || '9999-99-99';
@@ -2657,10 +2734,14 @@ function addTask(sub,nm,dl,imp,hrs,memo,subjectCode,classSection,fromClassroom){
 }
 function delTask(id){
   const idx=tasks.findIndex(t=>t.id===id);if(idx<0)return;
-  const wasShareable = isShareable(tasks[idx]);
-  undoSt.push({type:'del',task:{...tasks[idx]},desc:`"${tasks[idx].name}" 삭제`});redoSt.clear();
+  const t = tasks[idx];
+  const wasShareable = isShareable(t);
+  const wasFromGroup = !!t.fromGroup;
+  if(wasFromGroup){
+    if(!confirm('이 과제는 모임 과제입니다.\n본인 목록에서만 제거되며, 모임에는 계속 남습니다.\n계속하시겠습니까?')) return;
+  }
+  undoSt.push({type:'del',task:{...t},desc:`"${t.name}" 삭제`});redoSt.clear();
   tasks.splice(idx,1);
-  // 해당 과제의 시간표 블록도 제거
   scheduledBlocks = scheduledBlocks.filter(b=>b.taskId!==id);
   saveScheduledBlocks();
   rebuild();saveState();renderAll();toast('삭제됨');
@@ -2678,8 +2759,32 @@ function setProgress(id,v){
   undoSt.push({type:'prog',id,prev:t.progress,desc:`"${t.name}" ${v}%`});redoSt.clear();
   t.progress=v;if(v===100){t.done=true;toast('🎉 완료!','ok');}
   rebuild();saveState();
-  // 진행률 변경 시 열려있던 창 유지하면서 렌더
+  // 모임 과제 양방향 동기화
+  if(t.groupTaskId && t.groupId){
+    // 무한 루프 방지: updateGroupProgress가 다시 setProgress 호출하지 않도록
+    // (위 updateGroupProgress 함수는 본인 tasks를 직접 수정하므로 OK)
+    syncMyProgressToGroup(t.groupId, t.groupTaskId, v);
+  }
   renderAllKeepExp();
+}
+
+// 본인 → 모임 진행률 반영 (Firestore 업데이트만, 본인 tasks는 이미 갱신됨)
+async function syncMyProgressToGroup(groupId, groupTaskId, progress){
+  if(!window._db || !CU) return;
+  try{
+    const ref = window._fsDoc(window._db, 'groups', groupId);
+    const snap = await window._fsGetDoc(ref);
+    if(!snap.exists()) return;
+    const g = snap.data();
+    const tasksArr = g.groupTasks||[];
+    const idx = tasksArr.findIndex(t=>t.id===groupTaskId);
+    if(idx<0) return;
+    if(tasksArr[idx].progress === parseInt(progress)) return; // 변화 없음
+    tasksArr[idx].progress = parseInt(progress);
+    tasksArr[idx].lastUpdatedBy = CU.positionID;
+    tasksArr[idx].lastUpdatedAt = Date.now();
+    await window._fsSetDoc(ref, {...g, groupTasks:tasksArr});
+  }catch(e){ console.warn('syncMyProgressToGroup:', e); }
 }
 function renderAllKeepExp(){
   // 현재 열린 exp 목록 보존한 채 renderAll
@@ -3109,8 +3214,13 @@ function openSheet(){
   editingTaskId = null;
   document.getElementById('sh-title').textContent = '새 과제 등록';
   const dl=new Date();dl.setDate(dl.getDate()+7);document.getElementById('f-dl').value=dl.toISOString().slice(0,10);
+  document.getElementById('f-nm').value = '';
+  document.getElementById('f-memo').value = '';
+  document.getElementById('f-hr').value = 2;
   setSubjectValue('');
-  document.getElementById('ov').classList.add('open');updateSP();updSubjDL();
+  setStar(3); // 중요도 별점 항상 초기화
+  document.getElementById('ov').classList.add('open');
+  updateSP();updSubjDL();
   setTimeout(()=>document.getElementById('f-sub-select')?.focus(),350);
 }
 
@@ -3124,9 +3234,13 @@ function editTask(id){
   document.getElementById('f-dl').value = t.deadline||'';
   document.getElementById('f-hr').value = t.hours||2;
   document.getElementById('f-memo').value = t.memo||'';
-  setStar(t.importance||3);
   document.getElementById('ov').classList.add('open');
-  updateSP(); updSubjDL();
+  // 시트가 화면에 표시된 후 별점 렌더 (DOM이 안정된 상태)
+  setTimeout(()=>{
+    setStar(t.importance||3);
+    updateSP();
+  }, 50);
+  updSubjDL();
   setTimeout(()=>document.getElementById('f-nm')?.focus(),350);
 }
 function closeSheet(){
@@ -3222,6 +3336,12 @@ function renderStarSVG(containerId, val, onClickFn){
 
 function setStar(n){
   starV=n;
+  // DOM 준비 안 됐으면 약간 후 재시도
+  const container = document.getElementById('stars');
+  if(!container){
+    setTimeout(()=>setStar(n), 30);
+    return;
+  }
   renderStarSVG('stars', n, (v)=>setStar(v));
   const lbl=document.getElementById('star-val-label');
   if(lbl) lbl.textContent=n.toFixed(1);
@@ -3810,15 +3930,63 @@ async function initApp(session){
   // 본인 과제를 sharedTasks와 동기화
   setTimeout(syncMyTasksToShared, 2500);
   // 분반 친구 과제 카운트 미리 가져오기 (배지용)
-  setTimeout(async ()=>{
+  // KSAIN 시간표 동기화가 끝난 후 실행되도록 충분히 늦춤
+  const fetchAndUpdateClassmateBadge = async ()=>{
     try{
+      // KSAIN 과목이 비어있으면 의미 없으므로 확인
+      const subjects = getKsainSubjects();
+      if(!subjects.length){
+        console.log('[Classmate] KSAIN 과목 비어있음, 동기화 대기');
+        return;
+      }
       const list = await fetchClassmateTasks();
       const myKeys = new Set(tasks.map(t=>`${t.name}__${t.deadline}`));
       const fresh = list.filter(s=>!myKeys.has(`${s.name}__${s.deadline}`));
       window._classmateCount = fresh.length;
       updateClassmateBadge();
-    }catch(e){}
-  }, 3000);
+      console.log('[Classmate] 가져온 과제:', list.length, '신규:', fresh.length);
+    }catch(e){ console.warn('classmate badge:', e); }
+  };
+  setTimeout(fetchAndUpdateClassmateBadge, 3000);
+  // KSAIN 동기화가 늦게 끝나는 경우를 대비해 한 번 더
+  setTimeout(fetchAndUpdateClassmateBadge, 7000);
+  // 모임 담당 과제를 본인 tasks와 동기화
+  setTimeout(syncAssignedGroupTasks, 3500);
+}
+
+// 내가 담당으로 지정된 모임 과제를 본인 tasks에 자동 동기화
+async function syncAssignedGroupTasks(){
+  if(!CU) return;
+  try{
+    const groups = await fetchMyGroups();
+    let addedCount = 0;
+    let updatedCount = 0;
+    const myGroupTaskKeys = new Set();
+    for(const g of groups){
+      for(const gt of (g.groupTasks||[])){
+        if(!gt.assignees || !gt.assignees.includes(CU.positionID)) continue;
+        myGroupTaskKeys.add(`${g.id}::${gt.id}`);
+        const existing = tasks.find(t=>t.groupTaskId===gt.id && t.groupId===g.id);
+        const wasNew = !existing;
+        ensureGroupTaskInMyTasks(g.id, g.name, gt);
+        if(wasNew) addedCount++; else updatedCount++;
+      }
+    }
+    // 더 이상 담당자 아니거나 모임 과제가 삭제된 미러 정리
+    const beforeCount = tasks.length;
+    tasks = tasks.filter(t=>{
+      if(!t.fromGroup) return true;
+      const key = `${t.groupId}::${t.groupTaskId}`;
+      return myGroupTaskKeys.has(key);
+    });
+    const removedCount = beforeCount - tasks.length;
+    if(addedCount > 0 || removedCount > 0){
+      rebuild();
+      saveState();
+      if(curPg) renderAll();
+      if(addedCount > 0) toast(`모임 과제 ${addedCount}개 가져옴`,'ok');
+    }
+  }catch(e){ console.warn('syncAssignedGroupTasks:', e); }
 }
 
 /* ══════════════════════════════════════
@@ -3971,6 +4139,16 @@ async function syncKsainTimetable(){
     updSubjDL();
     if(curPg==='schedule') renderSchedule();
     toast(`시간표 + ${subjects.length}개 과목 동기화 완료 ✓`,'ok');
+    // 동기화 직후 분반 친구 과제도 다시 가져오기
+    setTimeout(async ()=>{
+      try{
+        const list = await fetchClassmateTasks();
+        const myKeys = new Set(tasks.map(t=>`${t.name}__${t.deadline}`));
+        const fresh = list.filter(s=>!myKeys.has(`${s.name}__${s.deadline}`));
+        window._classmateCount = fresh.length;
+        updateClassmateBadge();
+      }catch(e){}
+    }, 500);
   }catch(e){
     console.error('Timetable sync error:',e);
     toast('네트워크 오류','err');
