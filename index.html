@@ -3473,71 +3473,87 @@ function resetIgnoredGmail(){
   toast('무시 목록 초기화됨', 'ok');
 }
 
-async function syncGmail(){
-  const btn=document.getElementById('gmail-sync-btn');
-  const status=document.getElementById('gmail-status');
-  if(!CU?.email){toast('로그인이 필요합니다','err');return;}
+// 괄호 안에 btnElement를 넣어서 버튼이 어디 있든 작동하게 합니다.
+async function syncGmail(btnElement) {
+  const btn = btnElement || document.getElementById('gmail-sync-btn');
+  const status = document.getElementById('gmail-status');
+
+  // 🔥 혹시라도 버튼을 아예 못 찾으면 조용히 중단 (에러 방지)
+  if (!btn) return;
+
+  if (!CU?.email) { toast('로그인이 필요합니다','err'); return; }
 
   const appPw = await getGmailPw();
-  if (!appPw){ openGmailModal(false); return; }
+  if (!appPw) { openGmailModal(false); return; }
 
-  if(btn) {
-  btn.innerHTML='<span>⏳</span><span>불러오는 중...</span>';
-  btn.disabled=true;
+  // 1. "불러오는 중..." (수정하신 부분)
+  if (btn) {
+    btn.innerHTML = '<span>⏳</span><span>불러오는 중...</span>';
+    btn.disabled = true;
   }
-  btn.disabled=true;
-  status.style.display='block';
-  status.textContent='📧 Google Classroom 과제 읽는 중...';
+  
+  if (status) {
+    status.style.display = 'block';
+    status.textContent = '📧 Google Classroom 과제 읽는 중...';
+  }
 
-  try{
-    const res=await fetch('https://ksatudy-imap.jaeminpark0502.workers.dev',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email:CU.email, appPassword:appPw})
+  try {
+    const res = await fetch('https://ksatudy-imap.jaeminpark0502.workers.dev', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: CU.email, appPassword: appPw })
     });
-    const data=await res.json();
-    if(data.error){
-      status.textContent='❌ '+data.error;
-      if(btn) { btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled=false; }
+    const data = await res.json();
+    
+    // 2. 에러가 발생했을 때 되돌리기
+    if (data.error) {
+      if (status) status.textContent = '❌ ' + data.error;
+      if (btn) { btn.innerHTML = '<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled = false; }
       return;
     }
-    const assignments=data.assignments||[];
-    if(!assignments.length){
-      status.textContent='새로운 Classroom 과제 이메일이 없습니다.';
-      if(btn) { btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled=false; }
+    
+    const assignments = data.assignments || [];
+    
+    // 3. 메일에 과제가 없을 때 되돌리기
+    if (!assignments.length) {
+      if (status) status.textContent = '새로운 Classroom 과제 이메일이 없습니다.';
+      if (btn) { btn.innerHTML = '<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled = false; }
       return;
     }
 
-    // 이미 등록됐거나 기한 지난 것 제외, 나머지는 추천 목록에
-    let skipped=0;
-    const newSuggestions=[];
-    for(const a of assignments){
-      const exists=tasks.some(t=>t.name===a.name&&t.subject===a.subject);
-      if(exists){skipped++;continue;}
-      if(a.deadline && new Date(a.deadline)<new Date(new Date().toDateString())){skipped++;continue;}
-      // 무시한 과제 제외
-      if(isIgnored(a)){skipped++;continue;}
-      // 이미 추천 목록에 있는 것도 제외
-      const alreadySuggested=gmailSuggestions.some(s=>s.name===a.name&&s.subject===a.subject);
-      if(alreadySuggested) continue;
-      newSuggestions.push({...a, _star:3, _hours:2}); // 기본값
+    let skipped = 0;
+    const newSuggestions = [];
+    for (const a of assignments) {
+      const exists = tasks.some(t => t.name === a.name && t.subject === a.subject);
+      if (exists) { skipped++; continue; }
+      if (a.deadline && new Date(a.deadline) < new Date(new Date().toDateString())) { skipped++; continue; }
+      if (isIgnored(a)) { skipped++; continue; }
+      const alreadySuggested = gmailSuggestions.some(s => s.name === a.name && s.subject === a.subject);
+      if (alreadySuggested) continue;
+      newSuggestions.push({ ...a, _star: 3, _hours: 2 });
     }
 
-    if(!newSuggestions.length){
-      status.textContent=`새 과제가 없습니다${skipped?` (${skipped}개 이미 등록됨)`:''}`;
-      if(btn) { btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled=false; }
+    // 4. 새로운(추가할) 과제가 없을 때 되돌리기
+    if (!newSuggestions.length) {
+      if (status) status.textContent = `새 과제가 없습니다${skipped ? ` (${skipped}개 이미 등록됨)` : ''}`;
+      if (btn) { btn.innerHTML = '<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled = false; }
       return;
     }
 
     gmailSuggestions = [...gmailSuggestions, ...newSuggestions];
     renderGmailSuggestions();
-    status.textContent=`📋 ${newSuggestions.length}개 추천 과제를 확인해주세요.`;
-    toast(`📧 ${newSuggestions.length}개 추천 과제 도착`,'ok');
+    if (status) status.textContent = `📋 ${newSuggestions.length}개 추천 과제를 확인해주세요.`;
+    toast(`📧 ${newSuggestions.length}개 추천 과제 도착`, 'ok');
 
-  }catch(e){
-    console.error('Gmail sync error:',e);
-    status.textContent='❌ Worker 서버 연결 실패. 잠시 후 다시 시도해주세요.';
+  } catch (e) {
+    console.error('Gmail sync error:', e);
+    if (status) status.textContent = '❌ Worker 서버 연결 실패. 잠시 후 다시 시도해주세요.';
   }
-  if(btn) { btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled=false; }
+  
+  // 5. 성공/실패 후 마지막에 원래 버튼으로 되돌리기
+  if (btn) {
+    btn.innerHTML = '<span>🎓</span><span>Classroom 동기화</span>';
+    btn.disabled = false;
+  }
 }
 
 function renderGmailSuggestions(){
