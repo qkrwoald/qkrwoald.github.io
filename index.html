@@ -3481,7 +3481,10 @@ async function syncGmail(){
   const appPw = await getGmailPw();
   if (!appPw){ openGmailModal(false); return; }
 
+  if(btn) {
   btn.innerHTML='<span>⏳</span><span>불러오는 중...</span>';
+  btn.disabled=true;
+  }
   btn.disabled=true;
   status.style.display='block';
   status.textContent='📧 Google Classroom 과제 읽는 중...';
@@ -3494,12 +3497,14 @@ async function syncGmail(){
     const data=await res.json();
     if(data.error){
       status.textContent='❌ '+data.error;
-      btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>';btn.disabled=false;return;
+      if(btn) { btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled=false; }
+      return;
     }
     const assignments=data.assignments||[];
     if(!assignments.length){
       status.textContent='새로운 Classroom 과제 이메일이 없습니다.';
-      btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>';btn.disabled=false;return;
+      if(btn) { btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled=false; }
+      return;
     }
 
     // 이미 등록됐거나 기한 지난 것 제외, 나머지는 추천 목록에
@@ -3519,7 +3524,8 @@ async function syncGmail(){
 
     if(!newSuggestions.length){
       status.textContent=`새 과제가 없습니다${skipped?` (${skipped}개 이미 등록됨)`:''}`;
-      btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>';btn.disabled=false;return;
+      if(btn) { btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled=false; }
+      return;
     }
 
     gmailSuggestions = [...gmailSuggestions, ...newSuggestions];
@@ -3531,7 +3537,7 @@ async function syncGmail(){
     console.error('Gmail sync error:',e);
     status.textContent='❌ Worker 서버 연결 실패. 잠시 후 다시 시도해주세요.';
   }
-  btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>';btn.disabled=false;
+  if(btn) { btn.innerHTML='<span>🎓</span><span>Classroom 동기화</span>'; btn.disabled=false; }
 }
 
 function renderGmailSuggestions(){
